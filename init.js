@@ -134,7 +134,8 @@ PlayState.prototype.resetFromDeath = function() {
 };
 
 PlayState.prototype.tick = function(t) {
-  if (this.game.players[0].dead) {
+  var anyDead = this.game.players.some(function(p) { return p && p.dead; });
+  if (anyDead) {
     this.recordings.unshift(this.game.players[0].getRecording());
     GameState.push(new DeathState(this));
     return;
@@ -150,7 +151,8 @@ var Game = function(seed, recordings, stage) {
   for (var i = 0; i < recordings.length; i++) {
     this.players.push(new Player(recordings[i]));
   }
-  this.killers = this.players.map(function(p) { return p.wasKilledBy; });
+  this.killers = this.players.map(function(p) { return p.wasKilledBy; })
+    .filter(isDef);
   this.enemies = [];
   for (var i = 0; i < 50; i++) {
     var x = this.detRand.nextSign();
@@ -180,6 +182,62 @@ Game.prototype.enter = function() {
       new geom.Vec3(0, 0, 20), new geom.Vec3(1.8, 1.8, 1.8));
   this.stage.lighting().lights[3] = Light.globalLight(
       new geom.Vec3(1, 1, -1), new geom.Vec3(0.8, 0.8, 0.8));
+};
+
+Game.prototype.killerIsDead = function(killer) {
+  var pre = this.killers + '';
+  for (var i = this.killers.length - 1; i >= 0; i--) {
+    if (this.killers[i] == killer.id) {
+      this.killers.splice(i, 1);
+    }
+  }
+  window.console.debug('killing', killer, 'took from [', pre, '] to [', this.killers, ']');
+  if (this.killers.length == 0) {
+    var text = new Sprite(RENDERER.gl());
+    text.setTexture(RESOURCES['txt_restored.png']);
+    text.setSize(text.size().x * 3, text.size().y * 3);
+    var timed = {
+      left: 2,
+      sprite: text,
+      tick: function(t) {
+        this.left -= t;
+        this.sprite.visible = 3 != (Math.floor(this.left * 8) % 4);
+        if (this.left <= 0) {
+          this.dead = true;
+          this.sprite.stage.removeSprite(this.sprite);
+        }
+      }
+    };
+    this.stage.addSprite(text);
+    this.addFx(timed);
+  }
+};
+
+Game.prototype.mergePlayer = function(player) {
+  var index = this.players.indexOf(player);
+  if (index == 0) throw 'Bad bad bad';
+  this.players[index] = null;
+  player.dead = true;
+  var sp = new geom.Vec3(player.sprite.pos());
+  var p0 = this.players[0];
+  var timed = {
+    left: 1,
+    sprite: player.sprite,
+    tick: function(t) {
+      this.left -= t;
+      var alpha = Math.sqrt(this.left);
+      var ep = p0.sprite.pos();
+      player.sprite.setPos(
+          alpha * sp.x + (1 - alpha) * ep.x,
+          alpha * sp.y + (1 - alpha) * ep.y,
+          alpha * sp.z + (1 - alpha) * ep.z);
+      if (this.left <= 0) {
+        this.dead = true;
+        this.sprite.stage.removeSprite(this.sprite);
+      }
+    }
+  };
+  GAME.addFx(timed);
 };
 
 Game.prototype.tick = function(t) {
@@ -308,7 +366,7 @@ var ControllerRecorder = function(controller) {
 };
 
 ControllerRecorder.prototype.get = function() {
-  return this.es.concat({t:this.t, d:0});
+  return this.es.concat({t:this.t, d:1<<5});
 };
 
 ControllerRecorder.prototype.tick = function(t) {
@@ -355,6 +413,10 @@ ControllerRecorder.prototype.shoot = function() {
   return this.c.shoot();
 };
 
+ControllerRecorder.prototype.merge = function() {
+  return this.c.merge();
+};
+
 var PlaybackController = function(es) {
   this.es = es;
   this.ei = -1;
@@ -373,6 +435,7 @@ PlaybackController.prototype.tick = function(t) {
     this.dup = d & (1 << 2);
     this.ddown = d & (1 << 3);
     this.dshoot = d & (1 << 4);
+    this.dmerge = this.ei == this.es.length - 1;
   }
 };
 PlaybackController.prototype.left = function() {return this.dleft;};
@@ -380,6 +443,7 @@ PlaybackController.prototype.right = function() {return this.dright;};
 PlaybackController.prototype.up = function() {return this.dup;};
 PlaybackController.prototype.down = function() {return this.ddown;};
 PlaybackController.prototype.shoot = function() {return this.dshoot;};
+PlaybackController.prototype.merge = function() {return this.dmerge;};
 
 var PlayerKbController = function() {
   this.shotTimer = 0;
@@ -416,6 +480,8 @@ PlayerKbController.prototype.shoot = function() {
   }
   return false;
 };
+
+PlayerKbController.prototype.merge = function() { return false; };
 
 var HomingController = function(targets) {
   this.targets = targets;
@@ -541,23 +607,7 @@ Enemy.prototype.kill = function() {
     Explode(this.sprite.pos(), randInt(4, 10));
     this.sprite.stage.removeSprite(this.sprite);
     if (this.killer) {
-      var text = new Sprite(RENDERER.gl());
-      text.setTexture(RESOURCES['txt_restored.png']);
-      text.setSize(text.size().x * 3, text.size().y * 3);
-      var timed = {
-        left: 2,
-        sprite: text,
-        tick: function(t) {
-          this.left -= t;
-          this.sprite.visible = 3 != (Math.floor(this.left * 8) % 4);
-          if (this.left <= 0) {
-            this.dead = true;
-            this.sprite.stage.removeSprite(this.sprite);
-          }
-        }
-      };
-      this.sprite.stage.addSprite(text);
-      GAME.addFx(timed);
+      GAME.killerIsDead(this);
     }
   }
 };
@@ -638,6 +688,9 @@ Player.prototype.tick = function(t) {
   }
   if (KB.keyPressed('Q')) {
     this.kill();
+  }
+  if (this.controller.merge()) {
+    GAME.mergePlayer(this);
   }
 };
 
