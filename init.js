@@ -427,53 +427,19 @@ HomingController.prototype.tick = function(t) {
     this.target = this.targets[this.ti];
     this.ti--;
   }
-};
+  var mePos = this.me.sprite.pos().toVec2();
+  var targetPos = this.target.sprite.pos().toVec2();
 
-HomingController.prototype.left = function() {
-  return this.me.sprite.pos().x > this.target.sprite.pos().x;
-};
-
-HomingController.prototype.right = function() {
-  return this.me.sprite.pos().x < this.target.sprite.pos().x;
-};
-
-HomingController.prototype.up = function() {
-  return this.me.sprite.pos().y < this.target.sprite.pos().y;
-};
-
-HomingController.prototype.down = function() {
-  return this.me.sprite.pos().y > this.target.sprite.pos().y;
-};
-
-var LoopController = function(initial, duration) {
-  this.dir = initial % 4;
-  this.duration = duration;
-  this.t = 0;
-};
-
-LoopController.prototype.tick = function(t) {
-  this.t += t;
-  if (this.t > this.duration) {
-    this.t -= this.duration;
-    this.dir++;
-    this.dir %= 4;
+  var thetaToTarget = targetPos.minus(mePos).theta();
+  var myTheta = this.me.vel.theta();
+  var thetaDiff = thetaToTarget - myTheta;
+  if (thetaDiff > Math.PI || (thetaDiff < 0 && thetaDiff > -Math.PI)) {
+    myTheta -= t;
+  } else {
+    myTheta += t;
   }
-};
-
-LoopController.prototype.left = function() {
-  return this.dir == 0;
-};
-
-LoopController.prototype.right = function() {
-  return this.dir == 2;
-};
-
-LoopController.prototype.up = function() {
-  return this.dir == 1;
-};
-
-LoopController.prototype.down = function() {
-  return this.dir == 3;
+  this.me.vel.x = 100 * Math.cos(myTheta);
+  this.me.vel.y = 100 * Math.sin(myTheta);
 };
 
 var Bullet = function(name, opts) {
@@ -544,7 +510,7 @@ var Explode = function(where, size) {
     var len = Math.sqrt(dx * dx + dy * dy);
     GAME.addFx(new Particle('smoke', {
       life: randFlt(1.5, 2),
-      pos: new geom.Vec3(where.x + dx, where.y + dy, -1),
+      pos: new geom.Vec3(where.x + dx / size, where.y + dy / size, -1),
       vel: new geom.Vec3(25 * dx / len, 25 * dy / len, 0),
       scale: Math.max(1, Math.log(size) / Math.log(10)),
     }));
@@ -598,25 +564,6 @@ Enemy.prototype.kill = function() {
 Enemy.prototype.tick = function(t) {
   this.controller.tick(t);
   var force = new geom.Vec2(0, 0);
-  if (this.controller.left()) {
-    force.x -= 100 * t * (1 / this.inertia);
-  }
-  if (this.controller.right()) {
-    force.x += 100 * t * (1 / this.inertia);
-  }
-  if (this.controller.up()) {
-    force.y += 100 * t * (1 / this.inertia);
-  }
-  if (this.controller.down()) {
-    force.y -= 100 * t * (1 / this.inertia);
-  }
-  this.vel.x += force.x;
-  this.vel.y += force.y;
-
-  if (this.vel.mag2() > (100 * 100)) {
-    this.vel.m_normalize();
-    this.vel.m_times(100);
-  }
   this.sprite.addPos(this.vel.x * t, this.vel.y * t);
 };
 
