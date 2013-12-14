@@ -167,6 +167,18 @@ var Game = function(seed, recordings, stage) {
       this.enemies[i].setKiller();
     }
   }
+  for (var i = 50; i < 60; i++) {
+    var x = this.detRand.nextSign();
+    x *= this.detRand.nextFloat(100, 300);
+    var y = this.detRand.nextSign();
+    y *= this.detRand.nextFloat(100, 200);
+    this.enemies.push(new Spinner(
+          new geom.Vec3(x, y, 5),
+          i));
+    if (this.killers.indexOf(i) != -1) {
+      this.enemies[i].setKiller();
+    }
+  }
   this.bullets = [];
   this.fx = [];
 };
@@ -182,6 +194,14 @@ Game.prototype.enter = function() {
       new geom.Vec3(0, 0, 20), new geom.Vec3(1.8, 1.8, 1.8));
   this.stage.lighting().lights[3] = Light.globalLight(
       new geom.Vec3(1, 1, -1), new geom.Vec3(0.8, 0.8, 0.8));
+};
+
+Game.prototype.removeBulletsFrom = function(shooter) {
+  for (var i = 0; i < this.bullets.length; i++) {
+    if (this.bullets[i] && this.bullets[i].source == shooter.id) {
+      this.bullets[i].dead = true;
+    }
+  }
 };
 
 Game.prototype.killerIsDead = function(killer) {
@@ -272,6 +292,11 @@ Game.prototype.tick = function(t) {
           var deaths = this.collideBullet(this.bullets[i], this.enemies);
           for (var j = 0; j < deaths.length; j++) {
             deaths[j].kill();
+          }
+        } else {
+          var deaths = this.collideBullet(this.bullets[i], this.players);
+          for (var j = 0; j < deaths.length; j++) {
+            deaths[j].kill(this.bullets[i].source);
           }
         }
       }
@@ -583,6 +608,60 @@ var Explode = function(where, size) {
   }
 };
 
+var Spinner = function(pos, id) {
+  this.id = id;
+  this.shotDelay = 1.3;
+  this.theta = (id * 0xf3502) % (2 * Math.PI);
+  this.sprite = new Sprite(RENDERER.gl());
+  this.sprite.setTexture(RESOURCES['spinner_diffuse.png']);
+  //this.sprite.setNormalMap(RESOURCES['enemy_normal.png']);
+  this.sprite.setPos(pos.x, pos.y, pos.z);
+  this.sprite.beat = id % 4;
+};
+
+Spinner.prototype.setKiller = function() {
+  this.killer = true;
+  this.sprite.colorFilter = new geom.Vec3(0.2, 0.2, 1);
+};
+
+Spinner.prototype.kill = function() {
+  if (!this.dead) {
+    this.dead = true;
+    Explode(this.sprite.pos(), randInt(15, 25));
+    this.sprite.stage.removeSprite(this.sprite);
+    if (this.killer) {
+      GAME.killerIsDead(this);
+    }
+    GAME.removeBulletsFrom(this);
+  }
+};
+
+Spinner.prototype.tick = function(t) {
+  this.theta += t;
+  this.theta %= (2 * Math.PI);
+  this.sprite.setRotation(
+      new geom.Vec3(Math.cos(this.theta), Math.sin(this.theta), 10).normalize(),
+      this.theta);
+  this.shotDelay -= t;
+  if (this.shotDelay < 0) {
+    this.shotDelay += 1.3;
+    var size = this.sprite.size();
+    for (var i = 0; i < 3; i++) {
+      var delta = new geom.Vec3(
+          size.x * Math.cos(this.theta + i * 2 * Math.PI / 3),
+          size.y * Math.sin(this.theta + i * 2 * Math.PI / 3),
+          0);
+      GAME.addBullet(new Bullet('rbullet', {
+        scale: 2,
+        pos: delta.plus(this.sprite.pos()),
+        vel: delta.normalize().times(80),
+        friendly: false,
+        source: this.id,
+      }));
+    }
+  }
+};
+
 var Enemy = function(pos, controller, id) {
   this.id = id;
   this.vel = new geom.Vec2(0, 0);
@@ -598,7 +677,8 @@ var Enemy = function(pos, controller, id) {
 
 Enemy.prototype.setKiller = function() {
   this.killer = true;
-  this.sprite.setTexture(RESOURCES['killer_diffuse.png']);
+  this.sprite.colorFilter = new geom.Vec3(0.2, 0.2, 1);
+  //this.sprite.setTexture(RESOURCES['killer_diffuse.png']);
 };
 
 Enemy.prototype.kill = function() {

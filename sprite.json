@@ -32,6 +32,14 @@
         "h": 16
       }
     },
+    "spinner_diffuse.png": {
+      "frame": {
+        "x": 48,
+        "y": 0,
+        "w": 32,
+        "h": 32
+      }
+    },
     "enemy_normal.png": {
       "frame": {
         "x": 16,
@@ -54,6 +62,22 @@
         "y": 35,
         "w": 4,
         "h": 3
+      }
+    },
+    "rbullet_diffuse.png": {
+      "frame": {
+        "x": 12,
+        "y": 32,
+        "w": 5,
+        "h": 5
+      }
+    },
+    "rbullet_normal.png": {
+      "frame": {
+        "x": 12,
+        "y": 37,
+        "w": 5,
+        "h": 5
       }
     },
     "smoke_diffuse.png": {

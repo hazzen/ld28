@@ -778,6 +778,12 @@ Sprite.prototype.renderImpl_ = function(prog) {
   var gl = prog.gl_;
 
   gl.uniform1i(prog.getUniformLocation('beat'), this.beat);
+  if (this.colorFilter) {
+    gl.uniform3f(prog.getUniformLocation('colorFilter'),
+        this.colorFilter.x, this.colorFilter.y, this.colorFilter.z);
+  } else {
+    gl.uniform3f(prog.getUniformLocation('colorFilter'), 0, 0, 0);
+  }
 
   gl.drawElements(
       gl.TRIANGLES,
@@ -816,6 +822,7 @@ SHARED_SHADER = {
     'uniform mat4 cameraToClipMatrix;',
     'uniform mat4 modelToCameraMatrix;',
     'uniform mat3 normalModelToCameraMatrix;',
+    'uniform vec3 colorFilter;',
     'uniform vec3 lightPos;',
     'uniform int beat;',
     'uniform vec4 beats;',
@@ -969,16 +976,7 @@ SHADERS = {
     'void main(void) {',
     '  vec3 rawNormal = texture2D(normalSampler, frag_normalTexCord).rgb;',
     '  vec3 normal = normalize(2.0 * (rawNormal - vec3(0.5, 0.5, 0.5)));',
-    /*
-    '  vec3 toLight = lightPos - frag_position;',
-    '  float distSquared = dot(toLight, toLight);',
-    '  toLight = toLight * inversesqrt(distSquared);',
-    '  float intensity = 5.0 * (1.0 / (1.0 + 1.0 / (70.0 * 70.0) * distSquared));',
-    '  float incidence = dot(normal, toLight);',
-    '  gl_FragColor = vec4(incidence * intensity * diffuse.rgb, diffuse.a);',
-    */
-
-    '  vec4 diffuse = texture2D(diffuseSampler, frag_texCord);',
+    '  vec4 diffuse = vec4(colorFilter, 0.0) + texture2D(diffuseSampler, frag_texCord);',
     '  vec4 accum = diffuse * lighting.ambient;',
     '  for (int lightIndex = 0; lightIndex < numLights; lightIndex++) {',
     '    Light light;',
