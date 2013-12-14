@@ -246,6 +246,7 @@ Renderer3d.prototype.removeSprite = function(sprite) {
 
 Renderer3d.prototype.clear = function() {
   this.sprites_ = [];
+  this.lighting_ = new Lighting(new geom.Vec3(0.1, 0.1, 0.1), 1 / (70 * 70));
 };
 
 Renderer3d.prototype.shaderFromElement = function(elem) {

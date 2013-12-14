@@ -1,0 +1,27 @@
+{
+  "frames": {
+    "player_diffuse.png": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      }
+    },
+    "player_normal.png": {
+      "frame": {
+        "x": 0,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      }
+    }
+  },
+  "meta": {
+    "image": "sprite.png",
+    "size": {
+      "w": 128,
+      "h": 128
+    }
+  }
+}
