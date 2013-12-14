@@ -40,16 +40,28 @@ MainMenu.prototype.enter = function() {
 
 var Game = function() {
   this.player = new Player();
+  this.enemies = [];
+  this.enemies.push(new Enemy(new LoopController(1, 1)));
 };
 
 Game.prototype.enter = function() {
   RENDERER.addSprite(this.player.sprite);
-  RENDERER.lighting().lights[0] = Light.globalLight(
+  for (var i = 0; i < this.enemies.length; i++) {
+    RENDERER.addSprite(this.enemies[i].sprite);
+  }
+  RENDERER.lighting().lights[0] = new Light(
+      new geom.Vec3(0, 0, -20), new geom.Vec3(1.8, 1.8, 1.8));
+  RENDERER.lighting().lights[3] = Light.globalLight(
       new geom.Vec3(1, 1, -1), new geom.Vec3(0.8, 0.8, 0.8));
 };
 
 Game.prototype.tick = function(t) {
+  RENDERER.lighting().lights[0].pos.x = this.player.sprite.pos().x;
+  RENDERER.lighting().lights[0].pos.y = this.player.sprite.pos().y;
   this.player.tick(t);
+  for (var i = 0; i < this.enemies.length; i++) {
+    this.enemies[i].tick(t);
+  }
 };
 
 var PlayerKbController = function() {
@@ -78,12 +90,67 @@ PlayerKbController.prototype.shoot = function() {
   return KB.keyDown('z');
 };
 
+var LoopController = function(initial, duration) {
+  this.dir = initial % 4;
+  this.duration = duration;
+  this.t = 0;
+};
+
+LoopController.prototype.tick = function(t) {
+  this.t += t;
+  if (this.t > this.duration) {
+    this.t -= this.duration;
+    this.dir++;
+    this.dir %= 4;
+  }
+};
+
+LoopController.prototype.left = function() {
+  return this.dir == 0;
+};
+
+LoopController.prototype.right = function() {
+  return this.dir == 2;
+};
+
+LoopController.prototype.up = function() {
+  return this.dir == 1;
+};
+
+LoopController.prototype.down = function() {
+  return this.dir == 3;
+};
+
+var Enemy = function(controller) {
+  this.controller = controller;
+  this.sprite = new Sprite(RENDERER.gl());
+  this.sprite.setTexture(RESOURCES['enemy_diffuse.png']);
+  this.sprite.setNormalMap(RESOURCES['enemy_normal.png']);
+  this.sprite.setSize(16, 16);
+};
+
+Enemy.prototype.tick = function(t) {
+  this.controller.tick(t);
+  if (this.controller.left()) {
+    this.sprite.addPos(-100 * t, 0);
+  }
+  if (this.controller.right()) {
+    this.sprite.addPos(100 * t, 0);
+  }
+  if (this.controller.up()) {
+    this.sprite.addPos(0, 100 * t);
+  }
+  if (this.controller.down()) {
+    this.sprite.addPos(0, -100 * t);
+  }
+};
+
 var Player = function() {
   this.controller = new PlayerKbController();
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['player_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['player_normal.png']);
-  this.sprite.setSize(32, 32);
+  this.sprite.setSize(16, 16);
 };
 
 Player.prototype.tick = function(t) {

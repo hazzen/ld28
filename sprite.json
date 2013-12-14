@@ -15,6 +15,22 @@
         "w": 16,
         "h": 16
       }
+    },
+    "enemy_diffuse.png": {
+      "frame": {
+        "x": 16,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      }
+    },
+    "enemy_normal.png": {
+      "frame": {
+        "x": 16,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      }
     }
   },
   "meta": {
