@@ -1,0 +1,35 @@
+<html>
+  <head>
+    <title>ld28</title>
+    <script type='text/javascript' src='core.js'></script>
+    <script type='text/javascript' src='pidgine.js'></script>
+    <script type='text/javascript' src='state.js'></script>
+    <script type='text/javascript' src='geom.js'></script>
+    <script type='text/javascript' src='renderer.js'></script>
+    <script type='text/javascript' src='init.js'></script>
+    <style type='text/css'>
+      body {
+        background-color: #222;
+      }
+      #game {
+        position: relative;
+        outline: none;
+      }
+      canvas {
+        image-rendering: crisp-edges;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: -webkit-optimize-contrast;
+        position: absolute;
+        outline: none;
+        left: 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game" tabindex="0">
+    </div>
+    <script type='text/javascript'>
+      init();
+    </script>
+  </body>
+</html>
