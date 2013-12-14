@@ -33,7 +33,7 @@ MatrixStack.prototype.pop = function() {
 };
 
 
-function Renderer3d(attachTo, width, height) {
+function Stage(width, height) {
   this.modelToCamera_ = new MatrixStack();
   this.cameraPos_ = new geom.Vec3(0, 0, 10);
   this.cameraTarget_ = new geom.Vec3(0, 0, 0);
@@ -41,6 +41,40 @@ function Renderer3d(attachTo, width, height) {
       -width / 2, width / 2, -height / 2, height / 2,
       -100, 100);
 
+  this.lighting_ = new Lighting(new geom.Vec3(0.1, 0.1, 0.1), 1 / (70 * 70));
+
+  this.sprites_ = [];
+};
+
+Stage.prototype.clear = function() {
+  this.sprites_ = [];
+  this.lighting_ = new Lighting(new geom.Vec3(0.1, 0.1, 0.1), 1 / (70 * 70));
+};
+
+Stage.prototype.tick = function(t) {
+  this.lighting_.tick(t);
+};
+
+Stage.prototype.lighting = function() {
+  return this.lighting_;
+};
+
+Stage.prototype.addSprite = function(sprite) {
+  this.sprites_.push(sprite);
+  sprite.stage = this;
+};
+
+Stage.prototype.removeSprite = function(sprite) {
+  var index = this.sprites_.indexOf(sprite);
+  if (index == -1) {
+    throw 'Sprite not a child!';
+  }
+  this.sprites_.splice(index, 1);
+};
+
+
+
+function Renderer3d(attachTo, width, height) {
   this.canvasElem_ = document.createElement('canvas');
   this.canvasElem_.setAttribute('width', width);
   this.canvasElem_.setAttribute('height', height);
@@ -58,18 +92,10 @@ function Renderer3d(attachTo, width, height) {
 
   this.shaders_ = new GameShaders();
   this.shaders_.load(this);
-
-  this.lighting_ = new Lighting(new geom.Vec3(0.1, 0.1, 0.1), 1 / (70 * 70));
-
-  this.sprites_ = [];
 }
 
 Renderer3d.prototype.getElement = function() {
   return this.canvasElem_;
-};
-
-Renderer3d.prototype.tick = function(t) {
-  this.lighting_.tick(t);
 };
 
 Renderer3d.prototype.width = function() {
@@ -85,14 +111,15 @@ Renderer3d.prototype.gl = function() {
 };
 
 Renderer3d.prototype.lighting = function() {
-  return this.lighting_;
+  return this.stage_.lighting_;
 };
 
 Renderer3d.prototype.modelToCamera = function() {
-  return this.modelToCamera_;
+  return this.stage_.modelToCamera_;
 };
 
-Renderer3d.prototype.render = function(cb) {
+Renderer3d.prototype.render = function(stage) {
+  this.stage_ = stage;
   var gl = this.gl_;
   gl.clearColor(0, 0, 0, 1);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -101,16 +128,14 @@ Renderer3d.prototype.render = function(cb) {
   gl.disable(gl.CULL_FACE);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
-  var cPos = this.cameraPos_;
-  var cTar = this.cameraTarget_;
+  var cPos = this.stage_.cameraPos_;
+  var cTar = this.stage_.cameraTarget_;
   var camera = geom.Mat4.lookAt(
       cPos, cTar, new geom.Vec3(0, 1, 0));
 
-  this.modelToCamera_.push(camera);
-
-  cb(this);
-  this.renderSprites_();
-  this.modelToCamera_.pop();
+  this.modelToCamera().push(camera);
+    this.renderSprites_();
+  this.modelToCamera().pop();
 };
 
 Renderer3d.prototype.renderOneSprite_ = function(sprite) {
@@ -141,13 +166,13 @@ Renderer3d.prototype.renderOneSprite_ = function(sprite) {
 Renderer3d.prototype.renderSprites_ = function() {
   var gl = this.gl_;
 
-  if (!this.sprites_.length) return;
+  if (!this.stage_.sprites_.length) return;
 
   var flatByColor = {};
   var byTexture = {};
   var textureInfo = {};
-  for (var i = 0; i < this.sprites_.length; i++) {
-    var sprite = this.sprites_[i];
+  for (var i = 0; i < this.stage_.sprites_.length; i++) {
+    var sprite = this.stage_.sprites_[i];
     if (sprite.material) {
       putDefault(flatByColor, sprite.material.diffuseColor, []).push(sprite);
     } else if (sprite.texture) {
@@ -214,7 +239,7 @@ Renderer3d.prototype.program = function() {
 };
 
 Renderer3d.prototype.cameraToClip = function() {
-  return this.perspective_;
+  return this.stage_.perspective_;
 };
 
 Renderer3d.prototype.useProgram_ = function(prog) {
@@ -229,28 +254,11 @@ Renderer3d.prototype.useProgram_ = function(prog) {
     this.prog_.use();
     var cameraUniform = prog.getUniformLocation('cameraToClipMatrix');
     gl.uniformMatrix4fv(cameraUniform,
-        false, new Float32Array(this.perspective_.flatten()));
+        false, new Float32Array(this.cameraToClip().flatten()));
     UNIT_SQUARE_STRUCT.bindBuffers(gl, this.prog_);
 
-    this.lighting_.bind_(this);
+    this.stage_.lighting_.bind_(this);
   }
-};
-
-Renderer3d.prototype.addSprite = function(sprite) {
-  this.sprites_.push(sprite);
-};
-
-Renderer3d.prototype.removeSprite = function(sprite) {
-  var index = this.sprites_.indexOf(sprite);
-  if (index == -1) {
-    throw 'Sprite not a child!';
-  }
-  this.sprites_.splice(index, 1);
-};
-
-Renderer3d.prototype.clear = function() {
-  this.sprites_ = [];
-  this.lighting_ = new Lighting(new geom.Vec3(0.1, 0.1, 0.1), 1 / (70 * 70));
 };
 
 Renderer3d.prototype.shaderFromElement = function(elem) {
@@ -1055,6 +1063,7 @@ Resources.Loader.prototype.load = function(onComplete) {
 };
 
 exports.Resources = Resources;
+exports.Stage = Stage;
 exports.Renderer3d = Renderer3d;
 exports.MatrixStack = MatrixStack;
 exports.Shader = Shader;

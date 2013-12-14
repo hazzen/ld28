@@ -8,11 +8,12 @@ GameState.current = function() {
 };
 
 GameState.tick = function(t) {
+  GameState.current().stage.tick(t);
   GameState.current().tick && GameState.current().tick(t);
 };
 
 GameState.render = function(renderer) {
-  GameState.current().render && GameState.current().render(renderer);
+  renderer.render(GameState.current().stage);
 };
 
 GameState.push = function(state) {
@@ -23,7 +24,6 @@ GameState.push = function(state) {
 };
 
 GameState.pop = function() {
-  RENDERER.clear();
   var state = GameState.STACK.pop();
   if (state && state.exit) {
     state.exit();

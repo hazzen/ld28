@@ -60,6 +60,7 @@ var scaleCanvas = function(view) {
 };
 
 var MainMenu = function() {
+  this.stage = new Stage(WIDTH, HEIGHT);
 };
 
 MainMenu.prototype.tick = function() {
@@ -70,7 +71,7 @@ MainMenu.prototype.tick = function() {
 };
 
 MainMenu.prototype.enter = function() {
-  RENDERER.lighting().ambient = new geom.Vec3(1, 1, 1);
+  this.stage.lighting().ambient = new geom.Vec3(1, 1, 1);
   var text = new Sprite(RENDERER.gl());
   text.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: 256, height: 32}, function(ctx) {
     ctx.fillStyle = '#fff';
@@ -78,36 +79,78 @@ MainMenu.prototype.enter = function() {
     ctx.textAlign = 'center';
     ctx.fillText('You Only Get One', 128, 16);
   }));
-  RENDERER.addSprite(text);
+  this.stage.addSprite(text);
+};
+
+var DeathState = function(play) {
+  this.play = play;
+  this.stage = play.stage;
+  this.t = 0;
+  this.delayTime = 2;
+};
+
+DeathState.prototype.tick = function(t) {
+  this.t += t;
+
+  var a = this.t / this.delayTime;
+  a = Math.abs(Math.sin(a * 2 * Math.PI));
+  this.stage.lighting().lights[1] = new Light(
+      new geom.Vec3(20 * a, 200 * a, 100),
+      new geom.Vec3(0.5 + 100 * a, 0.5 + 10 * a, 0.5 + 10 * a));
+  if (this.t >= this.delayTime) {
+    GameState.pop();
+    this.play.resetFromDeath();
+  }
+};
+
+DeathState.prototype.enter = function() {
+  this.text = new Sprite(RENDERER.gl());
+  this.text.setTexture(RESOURCES['txt_fractured.png']);
+  this.text.setSize(
+      this.text.size().x * 3,
+      this.text.size().y * 3);
+  this.stage.addSprite(this.text);
+};
+
+DeathState.prototype.exit = function() {
+  this.text.stage.removeSprite(this.text);
 };
 
 var PlayState = function() {
+  this.stage = new Stage(WIDTH, HEIGHT);
   this.seed = 42;
   this.recordings = [];
-  this.game = new Game(this.seed, this.recordings);
+  this.game = new Game(this.seed, this.recordings, this.stage);
 };
 
 PlayState.prototype.enter = function() {
   this.game.enter();
 };
 
+PlayState.prototype.resetFromDeath = function() {
+  this.stage.clear();
+  this.game = new Game(this.seed, this.recordings, this.stage);
+  this.game.enter();
+};
+
 PlayState.prototype.tick = function(t) {
   if (this.game.players[0].dead) {
-    this.recordings.unshift(this.game.players[0].controller.get());
-    this.game = new Game(this.seed, this.recordings);
-    RENDERER.clear();
-    this.game.enter();
+    this.recordings.unshift(this.game.players[0].getRecording());
+    GameState.push(new DeathState(this));
+    return;
   }
   this.game.tick(t);
 };
 
-var Game = function(seed, recordings) {
+var Game = function(seed, recordings, stage) {
+  this.stage = stage;
   GAME = this;
   this.detRand = new MT(seed);
   this.players = [new Player()];
   for (var i = 0; i < recordings.length; i++) {
     this.players.push(new Player(recordings[i]));
   }
+  this.killers = this.players.map(function(p) { return p.wasKilledBy; });
   this.enemies = [];
   for (var i = 0; i < 50; i++) {
     var x = this.detRand.nextSign();
@@ -116,7 +159,11 @@ var Game = function(seed, recordings) {
     y *= this.detRand.nextFloat(100, 200);
     this.enemies.push(new Enemy(
           new geom.Vec3(x, y, 0),
-          new LoopController(this.detRand.nextInt(4), 1)));
+          new LoopController(this.detRand.nextInt(4), 1),
+          i));
+    if (this.killers.indexOf(i) != -1) {
+      this.enemies[i].setKiller();
+    }
   }
   this.bullets = [];
   this.fx = [];
@@ -124,28 +171,33 @@ var Game = function(seed, recordings) {
 
 Game.prototype.enter = function() {
   for (var i = 0; i < this.players.length; i++) {
-    RENDERER.addSprite(this.players[i].sprite);
+    this.stage.addSprite(this.players[i].sprite);
   }
   for (var i = 0; i < this.enemies.length; i++) {
-    RENDERER.addSprite(this.enemies[i].sprite);
+    this.stage.addSprite(this.enemies[i].sprite);
   }
-  RENDERER.lighting().lights[0] = new Light(
+  this.stage.lighting().lights[0] = new Light(
       new geom.Vec3(0, 0, -20), new geom.Vec3(1.8, 1.8, 1.8));
-  RENDERER.lighting().lights[3] = Light.globalLight(
+  this.stage.lighting().lights[3] = Light.globalLight(
       new geom.Vec3(1, 1, -1), new geom.Vec3(0.8, 0.8, 0.8));
 };
 
 Game.prototype.tick = function(t) {
-  RENDERER.lighting().lights[0].pos.x = this.players[0].sprite.pos().x;
-  RENDERER.lighting().lights[0].pos.y = this.players[0].sprite.pos().y;
+  this.stage.lighting().lights[0].pos.x = this.players[0].sprite.pos().x;
+  this.stage.lighting().lights[0].pos.y = this.players[0].sprite.pos().y;
   for (var i = 0; i < this.players.length; i++) {
     if (this.players[i] && !this.players[i].dead) {
       this.players[i].tick(t);
     }
   }
   for (var i = 0; i < this.enemies.length; i++) {
-    if (this.enemies[i] && !this.enemies[i].dead) {
-      this.enemies[i].tick(t);
+    var enemy = this.enemies[i];
+    if (enemy) {
+      if (!enemy.dead) {
+        enemy.tick(t);
+      } else if (this.killers.indexOf(enemy.id) != -1) {
+        GameState
+      }
     }
   }
 
@@ -154,7 +206,7 @@ Game.prototype.tick = function(t) {
   for (var i = 0; i < this.bullets.length; i++) {
     if (this.bullets[i]) {
       if (this.bullets[i].dead) {
-        RENDERER.removeSprite(this.bullets[i].sprite);
+        this.stage.removeSprite(this.bullets[i].sprite);
         this.bullets[i] = null;
       } else {
         this.bullets[i].tick(t);
@@ -170,7 +222,7 @@ Game.prototype.tick = function(t) {
   for (var i = 0; i < this.fx.length; i++) {
     if (this.fx[i]) {
       if (this.fx[i].dead) {
-        RENDERER.removeSprite(this.fx[i].sprite);
+        this.stage.removeSprite(this.fx[i].sprite);
         this.fx[i] = null;
       } else {
         this.fx[i].tick(t);
@@ -193,7 +245,7 @@ Game.prototype.collidePlayersWithEnemies = function() {
       if (!enemy || enemy.dead) continue;
       eAabb.m_fromCenterAndSize(enemy.sprite.pos(), enemy.sprite.size());
       if (pAabb.overlaps(eAabb)) {
-        playersToKill.push(player);
+        playersToKill.push([player, enemy.id]);
         var eIndex = enemiesToKill.indexOf(enemy);
         if (eIndex == -1) {
           enemiesToKill.push(enemy);
@@ -206,7 +258,7 @@ Game.prototype.collidePlayersWithEnemies = function() {
     enemiesToKill[i].kill();
   }
   for (var i = 0; i < playersToKill.length; i++) {
-    playersToKill[i].kill();
+    playersToKill[i][0].kill(playersToKill[i][1]);
   }
 };
 
@@ -228,7 +280,7 @@ Game.prototype.collideBullet = function(bullet, against) {
 };
 
 Game.prototype.addBullet = function(bullet) {
-  RENDERER.addSprite(bullet.sprite);
+  this.stage.addSprite(bullet.sprite);
   for (var i = 0; i < this.bullets.length; i++) {
     if (!this.bullets[i]) {
       this.bullets[i] = bullet;
@@ -239,7 +291,7 @@ Game.prototype.addBullet = function(bullet) {
 };
 
 Game.prototype.addFx = function(fx) {
-  RENDERER.addSprite(fx.sprite);
+  this.stage.addSprite(fx.sprite);
   for (var i = 0; i < this.fx.length; i++) {
     if (!this.fx[i]) {
       this.fx[i] = fx;
@@ -400,6 +452,7 @@ var Bullet = function(name, opts) {
   this.scale = opts.scale || 1;
   this.vel = opts.vel;
   this.friendly = !!opts.friendly;
+  this.source = opts.source;
 
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES[name + '_diffuse.png']);
@@ -470,7 +523,8 @@ var Explode = function(where, size) {
   }
 };
 
-var Enemy = function(pos, controller) {
+var Enemy = function(pos, controller, id) {
+  this.id = id;
   this.controller = controller;
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['enemy_diffuse.png']);
@@ -478,11 +532,16 @@ var Enemy = function(pos, controller) {
   this.sprite.setPos(pos.x, pos.y, pos.z);
 };
 
+Enemy.prototype.setKiller = function() {
+  this.killer = true;
+  this.sprite.setTexture(RESOURCES['killer_diffuse.png']);
+};
+
 Enemy.prototype.kill = function() {
   if (!this.dead) {
     this.dead = true;
     Explode(this.sprite.pos(), randInt(4, 10));
-    RENDERER.removeSprite(this.sprite);
+    this.sprite.stage.removeSprite(this.sprite);
   }
 };
 
@@ -507,7 +566,8 @@ Enemy.prototype.tick = function(t) {
 
 var Player = function(opt_recording) {
   if (opt_recording) {
-    this.controller = new PlaybackController(opt_recording);
+    this.controller = new PlaybackController(opt_recording.moves);
+    this.wasKilledBy = opt_recording.killedBy;
   } else {
     this.primary = true;
     this.controller = new PlayerKbController();
@@ -519,11 +579,19 @@ var Player = function(opt_recording) {
   this.shotDir = new geom.Vec3(1, 0);
 };
 
-Player.prototype.kill = function() {
+Player.prototype.getRecording = function(source) {
+  return {
+    moves: this.controller.get(),
+    killedBy: this.killedBy,
+  };
+};
+
+Player.prototype.kill = function(source) {
   if (!this.dead) {
     this.dead = true;
+    this.killedBy = source;
     Explode(this.sprite.pos(), 20);
-    RENDERER.removeSprite(this.sprite);
+    this.sprite.stage.removeSprite(this.sprite);
   }
 };
 
@@ -561,6 +629,7 @@ Player.prototype.tick = function(t) {
       vel: this.shotDir.times(190),
       friendly: true,
       scale: 1.5,
+      source: this.id,
     }));
   }
   if (KB.keyPressed('Q')) {
@@ -591,7 +660,6 @@ var init = function() {
   var gameStruct = {
     elem: mainElem,
     tick: function(t) {
-      RENDERER.tick(t);
       if (running || KB.keyPressed(']')) {
         GameState.tick(t);
       }
@@ -607,7 +675,7 @@ var init = function() {
     },
     render: function() {
       if (render) {
-        renderer.render(GameState.render);
+        GameState.render(renderer);
       }
     },
   };
