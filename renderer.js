@@ -244,6 +244,10 @@ Renderer3d.prototype.removeSprite = function(sprite) {
   this.sprites_.splice(index, 1);
 };
 
+Renderer3d.prototype.clear = function() {
+  this.sprites_ = [];
+};
+
 Renderer3d.prototype.shaderFromElement = function(elem) {
   var gl = this.gl_;
   var text = elem.textContent;
@@ -668,7 +672,7 @@ UnitSquare.prototype.bindBuffers = function(gl, program) {
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.elementArrayBuffer);
 };
 
-function Sprite(gl, dims) {
+function Sprite(gl) {
   this.gl_ = gl;
   this.w_ = 1;
   this.h_ = 1;

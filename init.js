@@ -18,6 +18,37 @@ var scaleCanvas = function(view) {
 var MainMenu = function() {
 };
 
+MainMenu.prototype.tick = function() {
+  if (KB.keyPressed(Keys.ENTER)) {
+    GameState.pop();
+    GameState.push(new Game());
+  }
+};
+
+MainMenu.prototype.enter = function() {
+  RENDERER.lighting().ambient = new geom.Vec3(1, 1, 1);
+  var text = new Sprite(RENDERER.gl());
+  text.setSize(256, 32);
+  text.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: 256, height: 32}, function(ctx) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('You Only Get One', 128, 16);
+  }));
+  RENDERER.addSprite(text);
+};
+
+MainMenu.prototype.exit = function() {
+  RENDERER.clear();
+};
+
+var Game = function() {
+};
+
+Game.prototype.enter = function() {
+  RENDERER.lighting().ambient = new geom.Vec3(1, 1, 1);
+};
+
 var init = function() {
   var mainElem = document.getElementById('game');
   var renderer = new Renderer3d(mainElem, 800, 600);
@@ -37,6 +68,7 @@ var init = function() {
   var gameStruct = {
     elem: mainElem,
     tick: function(t) {
+      RENDERER.tick(t);
       if (running || KB.keyPressed(']')) {
         GameState.tick(t);
       }
