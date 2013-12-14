@@ -31,6 +31,22 @@
         "w": 16,
         "h": 16
       }
+    },
+    "smoke_diffuse.png": {
+      "frame": {
+        "x": 0,
+        "y": 32,
+        "w": 8,
+        "h": 8
+      }
+    },
+    "smoke_normal.png": {
+      "frame": {
+        "x": 0,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      }
     }
   },
   "meta": {

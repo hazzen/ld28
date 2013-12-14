@@ -412,7 +412,7 @@ SpriteSheet.prototype.fromImg_ = function(img) {
   this.textures = {};
   for (var frameName in this.desc.frames) {
     var frame = this.desc.frames[frameName].frame;
-    this.textures[frameName] = new Texture(
+    var texture = new Texture(
       gl, this.texture, this.name, {
         name: frameName,
         x: frame.x / this.w,
@@ -420,6 +420,9 @@ SpriteSheet.prototype.fromImg_ = function(img) {
         w: frame.w / this.w,
         h: frame.h / this.h
       });
+    texture.w = frame.w;
+    texture.h = frame.h;
+    this.textures[frameName] = texture;
   }
 };
 
@@ -446,6 +449,8 @@ function Texture(gl, texture, name, opt_atlas) {
 Texture.prototype.fromImg_ = function(img) {
   if (this.loaded) return;
   this.loaded = true;
+  this.w = img.width;
+  this.h = img.height;
   var gl = this.gl_;
   gl.bindTexture(gl.TEXTURE_2D, this.texture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
@@ -699,6 +704,11 @@ Sprite.prototype.setSize = function(w, h) {
   this.h_ = h;
 };
 
+Sprite.prototype.size = function() {
+  return new geom.Vec2(this.w_, this.h_);
+};
+
+
 Sprite.prototype.pos = function() {
   return this.pos_;
 };
@@ -718,6 +728,7 @@ Sprite.prototype.setPos = function(x, y, opt_z) {
 
 Sprite.prototype.setTexture = function(txt) {
   this.texture = txt;
+  this.setSize(txt.w, txt.h);
 };
 
 Sprite.prototype.setNormalMap = function(txt) {

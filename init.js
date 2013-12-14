@@ -1,5 +1,49 @@
 (function(exports) {
 
+// -----------------------------------------------------------------------------
+// Random number stuff.
+function flipCoin() {
+  return randFlt(1) < 0.5;
+};
+
+function randFlt(a, opt_b) {
+  var low = 0;
+  var high = a;
+  if (opt_b != undefined) {
+    low = a;
+    high = opt_b;
+  }
+  return low + Math.random() * (high - low);
+};
+
+function randInt(a, opt_b) {
+  var low = 0;
+  var high = a;
+  if (opt_b != undefined) {
+    low = a;
+    high = opt_b;
+  }
+  low = Math.ceil(low);
+  high = Math.ceil(high);
+  return low + Math.floor(Math.random() * (high - low));
+};
+
+function pick(arrOrObj) {
+  if (typeof(arrOrObj) == 'string' || 'length' in arrOrObj) {
+    return arrOrObj[randInt(arrOrObj.length)];
+  } else {
+    var index = randInt(objectSize(arrOrObj));
+    for (var k in arrOrObj) {
+      if (!index) {
+        return k;
+      }
+      index--
+    }
+  }
+};
+
+
+
 var scaleCanvas = function(view) {
   var scaleX = view.width / (window.innerWidth - 50);
   var scaleY = view.height / (window.innerHeight - 50);
@@ -28,7 +72,6 @@ MainMenu.prototype.tick = function() {
 MainMenu.prototype.enter = function() {
   RENDERER.lighting().ambient = new geom.Vec3(1, 1, 1);
   var text = new Sprite(RENDERER.gl());
-  text.setSize(256, 32);
   text.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: 256, height: 32}, function(ctx) {
     ctx.fillStyle = '#fff';
     ctx.font = '20px serif';
@@ -39,9 +82,11 @@ MainMenu.prototype.enter = function() {
 };
 
 var Game = function() {
+  GAME = this;
   this.player = new Player();
   this.enemies = [];
   this.enemies.push(new Enemy(new LoopController(1, 1)));
+  this.fx = [];
 };
 
 Game.prototype.enter = function() {
@@ -60,8 +105,36 @@ Game.prototype.tick = function(t) {
   RENDERER.lighting().lights[0].pos.y = this.player.sprite.pos().y;
   this.player.tick(t);
   for (var i = 0; i < this.enemies.length; i++) {
-    this.enemies[i].tick(t);
+    if (this.enemies[i]) {
+      if (this.enemies[i].dead) {
+        RENDERER.removeSprite(this.enemies[i].sprite);
+        this.enemies[i] = null;
+      } else {
+        this.enemies[i].tick(t);
+      }
+    }
   }
+  for (var i = 0; i < this.fx.length; i++) {
+    if (this.fx[i]) {
+      if (this.fx[i].dead) {
+        RENDERER.removeSprite(this.fx[i].sprite);
+        this.fx[i] = null;
+      } else {
+        this.fx[i].tick(t);
+      }
+    }
+  }
+};
+
+Game.prototype.addFx = function(fx) {
+  RENDERER.addSprite(fx.sprite);
+  for (var i = 0; i < this.fx.length; i++) {
+    if (!this.fx[i]) {
+      this.fx[i] = fx;
+      return;
+    }
+  }
+  this.fx.push(fx);
 };
 
 var PlayerKbController = function() {
@@ -121,16 +194,53 @@ LoopController.prototype.down = function() {
   return this.dir == 3;
 };
 
+var Particle = function(name, opts) {
+  this.sprite = new Sprite(RENDERER.gl());
+  this.sprite.setTexture(RESOURCES[name + '_diffuse.png']);
+  this.sprite.setNormalMap(RESOURCES[name + '_normal.png']);
+  this.sprite.setPos(opts.pos.x, opts.pos.y, opts.pos.z || -1);
+  this.vel = opts.vel;
+  this.size = this.sprite.size();
+  this.life = this.duration = opts.duration || 2;
+};
+
+Particle.prototype.tick = function(t) {
+  this.life -= t;
+  if (this.life < 0) {
+    this.dead = true;
+    return;
+  }
+  this.sprite.addPos(this.vel.x * t, this.vel.y * t);
+
+  var alpha = this.life / this.duration;
+  this.sprite.setSize(this.size.x * alpha, this.size.y * alpha);
+};
+
+var Explode = function(where, size) {
+  for (var i = 0; i < size; i++) {
+    var dx = randFlt(-size * 2, size * 2);
+    var dy = randFlt(-size * 2, size * 2);
+    var len = Math.sqrt(dx * dx + dy * dy);
+    GAME.addFx(new Particle('smoke', {
+      life: randFlt(1.5, 2),
+      pos: new geom.Vec3(where.x + dx, where.y + dy, -1),
+      vel: new geom.Vec3(25 * dx / len, 25 * dy / len, 0),
+    }));
+  }
+};
+
 var Enemy = function(controller) {
   this.controller = controller;
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['enemy_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['enemy_normal.png']);
-  this.sprite.setSize(16, 16);
 };
 
 Enemy.prototype.tick = function(t) {
   this.controller.tick(t);
+  if (KB.keyPressed('X')) {
+    Explode(this.sprite.pos(), 5);
+  }
   if (this.controller.left()) {
     this.sprite.addPos(-100 * t, 0);
   }
@@ -150,7 +260,6 @@ var Player = function() {
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['player_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['player_normal.png']);
-  this.sprite.setSize(16, 16);
 };
 
 Player.prototype.tick = function(t) {
