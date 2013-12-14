@@ -197,6 +197,7 @@ Renderer3d.prototype.renderSprites_ = function() {
         gl.uniform4fv(this.prog_.getUniformLocation('diffuseColor'),
             new Float32Array(sprite.material.diffuseColor));
       }
+      if (!sprite.visible) continue;
       this.renderOneSprite_(sprite);
     }
   }
@@ -215,6 +216,7 @@ Renderer3d.prototype.renderSprites_ = function() {
 
     for (var i = 0; i < sprites.length; i++) {
       var sprite = sprites[i];
+      if (!sprite.visible) continue;
       if (sprite.texture.atlas) {
         gl.uniform4f(this.prog_.getUniformLocation('diffuseCords'),
             sprite.texture.atlas.x, sprite.texture.atlas.y,
@@ -691,6 +693,7 @@ UnitSquare.prototype.bindBuffers = function(gl, program) {
 };
 
 function Sprite(gl) {
+  this.visible = true;
   this.gl_ = gl;
   this.w_ = 1;
   this.h_ = 1;

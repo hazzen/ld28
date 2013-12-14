@@ -159,7 +159,7 @@ var Game = function(seed, recordings, stage) {
     y *= this.detRand.nextFloat(100, 200);
     this.enemies.push(new Enemy(
           new geom.Vec3(x, y, 0),
-          new LoopController(this.detRand.nextInt(4), 1),
+          new HomingController(this.players),
           i));
     if (this.killers.indexOf(i) != -1) {
       this.enemies[i].setKiller();
@@ -177,7 +177,7 @@ Game.prototype.enter = function() {
     this.stage.addSprite(this.enemies[i].sprite);
   }
   this.stage.lighting().lights[0] = new Light(
-      new geom.Vec3(0, 0, -20), new geom.Vec3(1.8, 1.8, 1.8));
+      new geom.Vec3(0, 0, 20), new geom.Vec3(1.8, 1.8, 1.8));
   this.stage.lighting().lights[3] = Light.globalLight(
       new geom.Vec3(1, 1, -1), new geom.Vec3(0.8, 0.8, 0.8));
 };
@@ -417,6 +417,34 @@ PlayerKbController.prototype.shoot = function() {
   return false;
 };
 
+var HomingController = function(targets) {
+  this.targets = targets;
+  this.ti = this.targets.length - 1;
+};
+
+HomingController.prototype.tick = function(t) {
+  while (this.ti >= 0 && (!this.target || this.target.dead)) {
+    this.target = this.targets[this.ti];
+    this.ti--;
+  }
+};
+
+HomingController.prototype.left = function() {
+  return this.me.sprite.pos().x > this.target.sprite.pos().x;
+};
+
+HomingController.prototype.right = function() {
+  return this.me.sprite.pos().x < this.target.sprite.pos().x;
+};
+
+HomingController.prototype.up = function() {
+  return this.me.sprite.pos().y < this.target.sprite.pos().y;
+};
+
+HomingController.prototype.down = function() {
+  return this.me.sprite.pos().y > this.target.sprite.pos().y;
+};
+
 var LoopController = function(initial, duration) {
   this.dir = initial % 4;
   this.duration = duration;
@@ -525,7 +553,10 @@ var Explode = function(where, size) {
 
 var Enemy = function(pos, controller, id) {
   this.id = id;
+  this.vel = new geom.Vec2(0, 0);
+  this.inertia = 0.2;
   this.controller = controller;
+  this.controller.me = this;
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['enemy_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['enemy_normal.png']);
@@ -542,26 +573,51 @@ Enemy.prototype.kill = function() {
     this.dead = true;
     Explode(this.sprite.pos(), randInt(4, 10));
     this.sprite.stage.removeSprite(this.sprite);
+    if (this.killer) {
+      var text = new Sprite(RENDERER.gl());
+      text.setTexture(RESOURCES['txt_restored.png']);
+      text.setSize(text.size().x * 3, text.size().y * 3);
+      var timed = {
+        left: 2,
+        sprite: text,
+        tick: function(t) {
+          this.left -= t;
+          this.sprite.visible = 3 != (Math.floor(this.left * 8) % 4);
+          if (this.left <= 0) {
+            this.dead = true;
+            this.sprite.stage.removeSprite(this.sprite);
+          }
+        }
+      };
+      this.sprite.stage.addSprite(text);
+      GAME.addFx(timed);
+    }
   }
 };
 
 Enemy.prototype.tick = function(t) {
   this.controller.tick(t);
-  if (KB.keyPressed('X')) {
-    Explode(this.sprite.pos(), 5);
-  }
+  var force = new geom.Vec2(0, 0);
   if (this.controller.left()) {
-    this.sprite.addPos(-100 * t, 0);
+    force.x -= 100 * t * (1 / this.inertia);
   }
   if (this.controller.right()) {
-    this.sprite.addPos(100 * t, 0);
+    force.x += 100 * t * (1 / this.inertia);
   }
   if (this.controller.up()) {
-    this.sprite.addPos(0, 100 * t);
+    force.y += 100 * t * (1 / this.inertia);
   }
   if (this.controller.down()) {
-    this.sprite.addPos(0, -100 * t);
+    force.y -= 100 * t * (1 / this.inertia);
   }
+  this.vel.x += force.x;
+  this.vel.y += force.y;
+
+  if (this.vel.mag2() > (100 * 100)) {
+    this.vel.m_normalize();
+    this.vel.m_times(100);
+  }
+  this.sprite.addPos(this.vel.x * t, this.vel.y * t);
 };
 
 var Player = function(opt_recording) {
