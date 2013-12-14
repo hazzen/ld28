@@ -34,6 +34,7 @@ MatrixStack.prototype.pop = function() {
 
 
 function Stage(width, height) {
+  this.beat1 = this.beat2 = this.beat3 = this.beat4 = 1;
   this.modelToCamera_ = new MatrixStack();
   this.cameraPos_ = new geom.Vec3(0, 0, 10);
   this.cameraTarget_ = new geom.Vec3(0, 0, 0);
@@ -53,6 +54,14 @@ Stage.prototype.clear = function() {
 
 Stage.prototype.tick = function(t) {
   this.lighting_.tick(t);
+  this.beat1 += t;
+  this.beat2 += t / 3;
+  this.beat3 += t / 5;
+  this.beat4 += t / 7;
+  this.beat1 %= 1;
+  this.beat2 %= 1;
+  this.beat3 %= 1;
+  this.beat4 %= 1;
 };
 
 Stage.prototype.lighting = function() {
@@ -260,6 +269,11 @@ Renderer3d.prototype.useProgram_ = function(prog) {
     UNIT_SQUARE_STRUCT.bindBuffers(gl, this.prog_);
 
     this.stage_.lighting_.bind_(this);
+    gl.uniform4f(prog.getUniformLocation('beats'),
+        Math.sin(Math.PI * this.stage_.beat1),
+        Math.sin(Math.PI * this.stage_.beat2),
+        Math.sin(Math.PI * this.stage_.beat3),
+        Math.sin(Math.PI * this.stage_.beat3));
   }
 };
 
@@ -698,6 +712,7 @@ function Sprite(gl) {
   this.w_ = 1;
   this.h_ = 1;
   this.pos_ = new geom.Vec3(0, 0, 0);
+  this.beats = 0;
 
   if (!UNIT_SQUARE_STRUCT) {
     UNIT_SQUARE_STRUCT = new UnitSquare(gl);
@@ -759,8 +774,10 @@ Sprite.prototype.setMaterial = function(mtl) {
   this.material = mtl;
 };
 
-Sprite.prototype.renderImpl_ = function(renderer) {
-  var gl = renderer.gl_;
+Sprite.prototype.renderImpl_ = function(prog) {
+  var gl = prog.gl_;
+
+  gl.uniform1i(prog.getUniformLocation('beat'), this.beat);
 
   gl.drawElements(
       gl.TRIANGLES,
@@ -795,11 +812,13 @@ Mesh.Vertex.sizeOf = function(vertexData) {
 };
 
 SHARED_SHADER = {
-  MTX_UNIFORMS: [
+  UNIFORMS: [
     'uniform mat4 cameraToClipMatrix;',
     'uniform mat4 modelToCameraMatrix;',
     'uniform mat3 normalModelToCameraMatrix;',
     'uniform vec3 lightPos;',
+    'uniform int beat;',
+    'uniform vec4 beats;',
   ].join('\n'),
 
   TEXTURE_SAMPLERS: [
@@ -865,9 +884,10 @@ SHARED_SHADER = {
 SHADERS = {
   FLAT_SPRITE_VERT: [
     'precision mediump float;',
+    'precision mediump int;',
     SHARED_SHADER.SPRITE_ATTR,
     '',
-    SHARED_SHADER.MTX_UNIFORMS,
+    SHARED_SHADER.UNIFORMS,
     '',
     SHARED_SHADER.LIGHT_UNIFORMS,
     '',
@@ -877,7 +897,7 @@ SHADERS = {
     SHARED_SHADER.SPRITE_VARY,
     '',
     'void main(void) {',
-    '  vec4 fragP = modelToCameraMatrix * vec4(position, 1.0);',
+    '  vec4 fragP = modelToCameraMatrix * vec4((1.0 + 0.1 * beats[beat]) * position, 1.0);',
     '  gl_Position = cameraToClipMatrix * fragP;',
     '  frag_position = fragP.xyz;',
     '  frag_color = diffuseColor;',
@@ -887,13 +907,14 @@ SHADERS = {
 
   FLAT_SPRITE_FRAG: [
     'precision mediump float;',
+    'precision mediump int;',
     SHARED_SHADER.SPRITE_VARY,
     '',
     SHARED_SHADER.LIGHT_UNIFORMS,
     SHARED_SHADER.CALC_LIGHT,
     'varying vec3 frag_normal;',
     '',
-    SHARED_SHADER.MTX_UNIFORMS,
+    SHARED_SHADER.UNIFORMS,
     '',
     'void main(void) {',
     '  vec4 accum = frag_color * lighting.ambient;',
@@ -913,9 +934,10 @@ SHADERS = {
 
   TEXTURED_SPRITE_VERT: [
     'precision mediump float;',
+    'precision mediump int;',
     SHARED_SHADER.SPRITE_ATTR,
     '',
-    SHARED_SHADER.MTX_UNIFORMS,
+    SHARED_SHADER.UNIFORMS,
     '',
     SHARED_SHADER.LIGHT_UNIFORMS,
     '',
@@ -924,7 +946,7 @@ SHADERS = {
     SHARED_SHADER.SPRITE_VARY,
     '',
     'void main(void) {',
-    '  vec4 fragP = modelToCameraMatrix * vec4(position, 1.0);',
+    '  vec4 fragP = modelToCameraMatrix * vec4((1.0 + 0.1 * beats[beat]) * position, 1.0);',
     '  gl_Position = cameraToClipMatrix * fragP;',
     '  frag_position = fragP.xyz;',
     '  frag_texCord = diffuseCords.xy + (diffuseCords.zw * texCord);',
@@ -934,9 +956,10 @@ SHADERS = {
 
   TEXTURED_SPRITE_FRAG: [
     'precision mediump float;',
+    'precision mediump int;',
     SHARED_SHADER.SPRITE_VARY,
     '',
-    SHARED_SHADER.MTX_UNIFORMS,
+    SHARED_SHADER.UNIFORMS,
     '',
     SHARED_SHADER.LIGHT_UNIFORMS,
     SHARED_SHADER.CALC_LIGHT,

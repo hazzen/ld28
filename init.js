@@ -527,6 +527,7 @@ var Enemy = function(pos, controller, id) {
   this.sprite.setTexture(RESOURCES['enemy_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['enemy_normal.png']);
   this.sprite.setPos(pos.x, pos.y, pos.z);
+  this.sprite.beat = id % 4;
 };
 
 Enemy.prototype.setKiller = function() {
