@@ -65,7 +65,7 @@ var MainMenu = function() {
 MainMenu.prototype.tick = function() {
   if (KB.keyPressed(Keys.ENTER)) {
     GameState.pop();
-    GameState.push(new Game());
+    GameState.push(new PlayState());
   }
 };
 
@@ -81,11 +81,43 @@ MainMenu.prototype.enter = function() {
   RENDERER.addSprite(text);
 };
 
-var Game = function() {
+var PlayState = function() {
+  this.seed = 42;
+  this.recordings = [];
+  this.game = new Game(this.seed, this.recordings);
+};
+
+PlayState.prototype.enter = function() {
+  this.game.enter();
+};
+
+PlayState.prototype.tick = function(t) {
+  if (this.game.players[0].dead) {
+    this.recordings.unshift(this.game.players[0].controller.get());
+    this.game = new Game(this.seed, this.recordings);
+    RENDERER.clear();
+    this.game.enter();
+  }
+  this.game.tick(t);
+};
+
+var Game = function(seed, recordings) {
   GAME = this;
+  this.detRand = new MT(seed);
   this.players = [new Player()];
+  for (var i = 0; i < recordings.length; i++) {
+    this.players.push(new Player(recordings[i]));
+  }
   this.enemies = [];
-  this.enemies.push(new Enemy(new LoopController(1, 1)));
+  for (var i = 0; i < 50; i++) {
+    var x = this.detRand.nextSign();
+    x *= this.detRand.nextFloat(100, 300);
+    var y = this.detRand.nextSign();
+    y *= this.detRand.nextFloat(100, 200);
+    this.enemies.push(new Enemy(
+          new geom.Vec3(x, y, 0),
+          new LoopController(this.detRand.nextInt(4), 1)));
+  }
   this.bullets = [];
   this.fx = [];
 };
@@ -107,24 +139,18 @@ Game.prototype.tick = function(t) {
   RENDERER.lighting().lights[0].pos.x = this.players[0].sprite.pos().x;
   RENDERER.lighting().lights[0].pos.y = this.players[0].sprite.pos().y;
   for (var i = 0; i < this.players.length; i++) {
-    if (this.players[i]) {
-      if (this.players[i].dead) {
-        RENDERER.removeSprite(this.players[i].sprite);
-      } else {
-        this.players[i].tick(t);
-      }
+    if (this.players[i] && !this.players[i].dead) {
+      this.players[i].tick(t);
     }
   }
   for (var i = 0; i < this.enemies.length; i++) {
-    if (this.enemies[i]) {
-      if (this.enemies[i].dead) {
-        RENDERER.removeSprite(this.enemies[i].sprite);
-        this.enemies[i] = null;
-      } else {
-        this.enemies[i].tick(t);
-      }
+    if (this.enemies[i] && !this.enemies[i].dead) {
+      this.enemies[i].tick(t);
     }
   }
+
+  this.collidePlayersWithEnemies();
+
   for (var i = 0; i < this.bullets.length; i++) {
     if (this.bullets[i]) {
       if (this.bullets[i].dead) {
@@ -135,8 +161,7 @@ Game.prototype.tick = function(t) {
         if (this.bullets[i].friendly) {
           var deaths = this.collideBullet(this.bullets[i], this.enemies);
           for (var j = 0; j < deaths.length; j++) {
-            deaths[j].dead = true;
-            Explode(deaths[j].sprite.pos(), randInt(4, 10));
+            deaths[j].kill();
           }
         }
       }
@@ -151,6 +176,37 @@ Game.prototype.tick = function(t) {
         this.fx[i].tick(t);
       }
     }
+  }
+};
+
+Game.prototype.collidePlayersWithEnemies = function() {
+  var pAabb = new geom.AABB();
+  var eAabb = new geom.AABB();
+  var playersToKill = [];
+  var enemiesToKill = [];
+  for (var i = 0; i < this.players.length; i++) {
+    var player = this.players[i];
+    if (!player || player.dead) continue;
+    pAabb.m_fromCenterAndSize(player.sprite.pos(), player.sprite.size());
+    for (var j = 0; j < this.enemies.length; j++) {
+      var enemy = this.enemies[j];
+      if (!enemy || enemy.dead) continue;
+      eAabb.m_fromCenterAndSize(enemy.sprite.pos(), enemy.sprite.size());
+      if (pAabb.overlaps(eAabb)) {
+        playersToKill.push(player);
+        var eIndex = enemiesToKill.indexOf(enemy);
+        if (eIndex == -1) {
+          enemiesToKill.push(enemy);
+        }
+      }
+    }
+  }
+
+  for (var i = 0; i < enemiesToKill.length; i++) {
+    enemiesToKill[i].kill();
+  }
+  for (var i = 0; i < playersToKill.length; i++) {
+    playersToKill[i].kill();
   }
 };
 
@@ -193,12 +249,96 @@ Game.prototype.addFx = function(fx) {
   this.fx.push(fx);
 };
 
+var ControllerRecorder = function(controller) {
+  this.c = controller;
+  this.t = 0;
+  this.es = [{t:0, d:0}];
+};
+
+ControllerRecorder.prototype.get = function() {
+  return this.es.concat({t:this.t, d:0});
+};
+
+ControllerRecorder.prototype.tick = function(t) {
+  this.c.tick(t);
+  var d = 0;
+  if (this.c.left()) {
+    d |= 1 << 0;
+  }
+  if (this.c.right()) {
+    d |= 1 << 1;
+  }
+  if (this.c.up()) {
+    d |= 1 << 2;
+  }
+  if (this.c.down()) {
+    d |= 1 << 3;
+  }
+  if (this.c.shoot()) {
+    d |= 1 << 4;
+  }
+  if (d != this.es[this.es.length - 1].d) {
+    this.es.push({t:this.t, d:d});
+  }
+  this.t += t;
+};
+
+ControllerRecorder.prototype.left = function() {
+  return this.c.left();
+};
+
+ControllerRecorder.prototype.right = function() {
+  return this.c.right();
+};
+
+ControllerRecorder.prototype.up = function() {
+  return this.c.up();
+};
+
+ControllerRecorder.prototype.down = function() {
+  return this.c.down();
+};
+
+ControllerRecorder.prototype.shoot = function() {
+  return this.c.shoot();
+};
+
+var PlaybackController = function(es) {
+  this.es = es;
+  this.ei = -1;
+  this.t = 0;
+
+  this.dleft = this.dright = this.dup = this.ddown = this.dshoot = false;
+};
+
+PlaybackController.prototype.tick = function(t) {
+  this.t += t;
+  if (this.ei + 1 < this.es.length && this.es[this.ei + 1].t < this.t) {
+    this.ei++;
+    var d = (this.es[this.ei] && this.es[this.ei].d) || 0;
+    this.dleft = d & (1 << 0);
+    this.dright = d & (1 << 1);
+    this.dup = d & (1 << 2);
+    this.ddown = d & (1 << 3);
+    this.dshoot = d & (1 << 4);
+  }
+};
+PlaybackController.prototype.left = function() {return this.dleft;};
+PlaybackController.prototype.right = function() {return this.dright;};
+PlaybackController.prototype.up = function() {return this.dup;};
+PlaybackController.prototype.down = function() {return this.ddown;};
+PlaybackController.prototype.shoot = function() {return this.dshoot;};
+
 var PlayerKbController = function() {
   this.shotTimer = 0;
 };
 
 PlayerKbController.prototype.tick = function(t) {
   this.shotTimer -= t;
+  if (this.didShoot) {
+    this.didShoot = false;
+    this.shotTimer = 0.13;
+  }
 };
 
 PlayerKbController.prototype.left = function() {
@@ -218,8 +358,8 @@ PlayerKbController.prototype.down = function() {
 };
 
 PlayerKbController.prototype.shoot = function() {
-  if (KB.keyDown('z') && this.shotTimer <= 0) {
-    this.shotTimer = 0.13;
+  if (this.didShoot || (KB.keyDown('z') && this.shotTimer <= 0)) {
+    this.didShoot = true;
     return true;
   }
   return false;
@@ -294,6 +434,11 @@ var Particle = function(name, opts) {
       this.vel.y, -this.vel.x, randFlt(-0.5, 0.5)).normalize();
   this.rotAngle = 0;
   this.size = this.sprite.size();
+  if (isDef(opts.scale)) {
+    this.size.x *= opts.scale;
+    this.size.y *= opts.scale;
+    this.sprite.setSize(this.size.x, this.size.y);
+  }
   this.life = this.duration = opts.duration || 2;
 };
 
@@ -320,15 +465,25 @@ var Explode = function(where, size) {
       life: randFlt(1.5, 2),
       pos: new geom.Vec3(where.x + dx, where.y + dy, -1),
       vel: new geom.Vec3(25 * dx / len, 25 * dy / len, 0),
+      scale: Math.max(1, Math.log(size) / Math.log(10)),
     }));
   }
 };
 
-var Enemy = function(controller) {
+var Enemy = function(pos, controller) {
   this.controller = controller;
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['enemy_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['enemy_normal.png']);
+  this.sprite.setPos(pos.x, pos.y, pos.z);
+};
+
+Enemy.prototype.kill = function() {
+  if (!this.dead) {
+    this.dead = true;
+    Explode(this.sprite.pos(), randInt(4, 10));
+    RENDERER.removeSprite(this.sprite);
+  }
 };
 
 Enemy.prototype.tick = function(t) {
@@ -350,12 +505,26 @@ Enemy.prototype.tick = function(t) {
   }
 };
 
-var Player = function() {
-  this.controller = new PlayerKbController();
+var Player = function(opt_recording) {
+  if (opt_recording) {
+    this.controller = new PlaybackController(opt_recording);
+  } else {
+    this.primary = true;
+    this.controller = new PlayerKbController();
+  }
+  this.controller = new ControllerRecorder(this.controller);
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['player_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['player_normal.png']);
   this.shotDir = new geom.Vec3(1, 0);
+};
+
+Player.prototype.kill = function() {
+  if (!this.dead) {
+    this.dead = true;
+    Explode(this.sprite.pos(), 20);
+    RENDERER.removeSprite(this.sprite);
+  }
 };
 
 Player.prototype.tick = function(t) {
@@ -393,6 +562,9 @@ Player.prototype.tick = function(t) {
       friendly: true,
       scale: 1.5,
     }));
+  }
+  if (KB.keyPressed('Q')) {
+    this.kill();
   }
 };
 
