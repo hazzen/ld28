@@ -131,6 +131,10 @@ var Vec3 = function(xOrP, opt_y, opt_z) {
   }
 };
 
+Vec3.prototype.toVec2 = function() {
+  return new Vec2(this.x, this.y);
+};
+
 Vec3.prototype.m_plus = function(o) {
   this.x += o.x;
   this.y += o.y;
@@ -158,7 +162,7 @@ Vec3.prototype.minus = function(o) {
 Vec3.prototype.m_times = function(v) {
   this.x *= v;
   this.y *= v;
-  this.z *= z;
+  this.z *= v;
 };
 
 Vec3.prototype.times = function(v) {
@@ -503,11 +507,35 @@ Mat4.prototype.m_scaleVec = function(p) {
   p.z = nz;
 };
 
+var AABB = function(x, y, w, h) {
+  this.x1 = x;
+  this.y1 = y;
+  this.x2 = x + w;
+  this.y2 = y + h;
+};
+
+AABB.prototype.m_fromCenterAndSize = function(c, s) {
+  this.x1 = c.x - s.x / 2;
+  this.y1 = c.y - s.y / 2;
+  this.x2 = c.x + s.x / 2;
+  this.y2 = c.y + s.y / 2;
+};
+
+AABB.fromCenterAndSize = function(c, s) {
+  return new AABB(c.x - s.x / 2, c.y - s.y / 2, s.x, s.y);
+};
+
+AABB.prototype.overlaps = function(aabb) {
+  return !(this.x1 > aabb.x2 || this.x2 < aabb.x1 ||
+           this.y1 > aabb.y2 || this.y2 < aabb.y1);
+};
+
 exports.geom = {
   Vec2: Vec2,
   Vec3: Vec3,
   Mat3: Mat3,
   Mat4: Mat4,
+  AABB: AABB,
 };
 
 })(window);

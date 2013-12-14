@@ -83,14 +83,17 @@ MainMenu.prototype.enter = function() {
 
 var Game = function() {
   GAME = this;
-  this.player = new Player();
+  this.players = [new Player()];
   this.enemies = [];
   this.enemies.push(new Enemy(new LoopController(1, 1)));
+  this.bullets = [];
   this.fx = [];
 };
 
 Game.prototype.enter = function() {
-  RENDERER.addSprite(this.player.sprite);
+  for (var i = 0; i < this.players.length; i++) {
+    RENDERER.addSprite(this.players[i].sprite);
+  }
   for (var i = 0; i < this.enemies.length; i++) {
     RENDERER.addSprite(this.enemies[i].sprite);
   }
@@ -101,9 +104,17 @@ Game.prototype.enter = function() {
 };
 
 Game.prototype.tick = function(t) {
-  RENDERER.lighting().lights[0].pos.x = this.player.sprite.pos().x;
-  RENDERER.lighting().lights[0].pos.y = this.player.sprite.pos().y;
-  this.player.tick(t);
+  RENDERER.lighting().lights[0].pos.x = this.players[0].sprite.pos().x;
+  RENDERER.lighting().lights[0].pos.y = this.players[0].sprite.pos().y;
+  for (var i = 0; i < this.players.length; i++) {
+    if (this.players[i]) {
+      if (this.players[i].dead) {
+        RENDERER.removeSprite(this.players[i].sprite);
+      } else {
+        this.players[i].tick(t);
+      }
+    }
+  }
   for (var i = 0; i < this.enemies.length; i++) {
     if (this.enemies[i]) {
       if (this.enemies[i].dead) {
@@ -111,6 +122,23 @@ Game.prototype.tick = function(t) {
         this.enemies[i] = null;
       } else {
         this.enemies[i].tick(t);
+      }
+    }
+  }
+  for (var i = 0; i < this.bullets.length; i++) {
+    if (this.bullets[i]) {
+      if (this.bullets[i].dead) {
+        RENDERER.removeSprite(this.bullets[i].sprite);
+        this.bullets[i] = null;
+      } else {
+        this.bullets[i].tick(t);
+        if (this.bullets[i].friendly) {
+          var deaths = this.collideBullet(this.bullets[i], this.enemies);
+          for (var j = 0; j < deaths.length; j++) {
+            deaths[j].dead = true;
+            Explode(deaths[j].sprite.pos(), randInt(4, 10));
+          }
+        }
       }
     }
   }
@@ -126,6 +154,34 @@ Game.prototype.tick = function(t) {
   }
 };
 
+Game.prototype.collideBullet = function(bullet, against) {
+  var hit = [];
+  var bAabb = geom.AABB.fromCenterAndSize(
+      bullet.sprite.pos(), bullet.sprite.size());
+  var aabb = new geom.AABB(0,0,0,0);
+  for (var i = 0; i < against.length; i++) {
+    var target = against[i];
+    if (!target || target.dead) continue;
+    aabb.m_fromCenterAndSize(target.sprite.pos(), target.sprite.size());
+    if (aabb.overlaps(bAabb)) {
+      bullet.dead = true;
+      hit.push(target);
+    }
+  }
+  return hit;
+};
+
+Game.prototype.addBullet = function(bullet) {
+  RENDERER.addSprite(bullet.sprite);
+  for (var i = 0; i < this.bullets.length; i++) {
+    if (!this.bullets[i]) {
+      this.bullets[i] = bullet;
+      return;
+    }
+  }
+  this.bullets.push(bullet);
+};
+
 Game.prototype.addFx = function(fx) {
   RENDERER.addSprite(fx.sprite);
   for (var i = 0; i < this.fx.length; i++) {
@@ -138,9 +194,11 @@ Game.prototype.addFx = function(fx) {
 };
 
 var PlayerKbController = function() {
+  this.shotTimer = 0;
 };
 
-PlayerKbController.prototype.tick = function() {
+PlayerKbController.prototype.tick = function(t) {
+  this.shotTimer -= t;
 };
 
 PlayerKbController.prototype.left = function() {
@@ -160,7 +218,11 @@ PlayerKbController.prototype.down = function() {
 };
 
 PlayerKbController.prototype.shoot = function() {
-  return KB.keyDown('z');
+  if (KB.keyDown('z') && this.shotTimer <= 0) {
+    this.shotTimer = 0.13;
+    return true;
+  }
+  return false;
 };
 
 var LoopController = function(initial, duration) {
@@ -194,12 +256,43 @@ LoopController.prototype.down = function() {
   return this.dir == 3;
 };
 
+var Bullet = function(name, opts) {
+  this.scale = opts.scale || 1;
+  this.vel = opts.vel;
+  this.friendly = !!opts.friendly;
+
+  this.sprite = new Sprite(RENDERER.gl());
+  this.sprite.setTexture(RESOURCES[name + '_diffuse.png']);
+  this.sprite.setNormalMap(RESOURCES[name + '_normal.png']);
+  this.sprite.setPos(opts.pos.x, opts.pos.y, opts.pos.z || -1);
+  this.sprite.setRotation(
+      new geom.Vec3(0, 0, 1),
+      this.vel.toVec2().theta());
+  if (this.scale != 1) {
+    var size = this.sprite.size();
+    this.sprite.setSize(size.x * this.scale, size.y * this.scale);
+  }
+};
+
+Bullet.prototype.tick = function(t) {
+  var p = this.sprite.pos();
+  if (p.x < -WIDTH / 2 || p.x > WIDTH / 2 ||
+      p.y < -HEIGHT / 2 || p.y > HEIGHT / 2) {
+    this.dead = true;
+    return;
+  }
+  this.sprite.addPos(this.vel.x * t, this.vel.y * t);
+};
+
 var Particle = function(name, opts) {
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES[name + '_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES[name + '_normal.png']);
   this.sprite.setPos(opts.pos.x, opts.pos.y, opts.pos.z || -1);
   this.vel = opts.vel;
+  this.rotAxis = new geom.Vec3(
+      this.vel.y, -this.vel.x, randFlt(-0.5, 0.5)).normalize();
+  this.rotAngle = 0;
   this.size = this.sprite.size();
   this.life = this.duration = opts.duration || 2;
 };
@@ -210,7 +303,9 @@ Particle.prototype.tick = function(t) {
     this.dead = true;
     return;
   }
+  this.rotAngle += t * this.vel.mag() / 10;
   this.sprite.addPos(this.vel.x * t, this.vel.y * t);
+  this.sprite.setRotation(this.rotAxis, this.rotAngle);
 
   var alpha = this.life / this.duration;
   this.sprite.setSize(this.size.x * alpha, this.size.y * alpha);
@@ -260,27 +355,53 @@ var Player = function() {
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['player_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['player_normal.png']);
+  this.shotDir = new geom.Vec3(1, 0);
 };
 
 Player.prototype.tick = function(t) {
   this.controller.tick(t);
+  var side = false;
+  var vert = false;
   if (this.controller.left()) {
+    side = true;
+    this.shotDir.x = -1;
     this.sprite.addPos(-100 * t, 0);
   }
   if (this.controller.right()) {
+    side = true;
+    this.shotDir.x = 1;
     this.sprite.addPos(100 * t, 0);
   }
   if (this.controller.up()) {
+    vert = true;
+    this.shotDir.y = 1;
     this.sprite.addPos(0, 100 * t);
   }
   if (this.controller.down()) {
+    vert = true;
+    this.shotDir.y = -1;
     this.sprite.addPos(0, -100 * t);
+  }
+  if (side != vert) {
+    if (!side) this.shotDir.x = 0;
+    if (!vert) this.shotDir.y = 0;
+  }
+  if (this.controller.shoot()) {
+    GAME.addBullet(new Bullet('bullet', {
+      pos: new geom.Vec3(this.sprite.pos()),
+      vel: this.shotDir.times(190),
+      friendly: true,
+      scale: 1.5,
+    }));
   }
 };
 
+WIDTH = 800;
+HEIGHT = 600;
+
 var init = function() {
   var mainElem = document.getElementById('game');
-  var renderer = new Renderer3d(mainElem, 800, 600);
+  var renderer = new Renderer3d(mainElem, WIDTH, HEIGHT);
   RENDERER = renderer;
   var view = renderer.getElement();
   scaleCanvas(view);

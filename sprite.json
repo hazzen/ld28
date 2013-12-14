@@ -32,6 +32,22 @@
         "h": 16
       }
     },
+    "bullet_diffuse.png": {
+      "frame": {
+        "x": 8,
+        "y": 32,
+        "w": 4,
+        "h": 3
+      }
+    },
+    "bullet_normal.png": {
+      "frame": {
+        "x": 8,
+        "y": 35,
+        "w": 4,
+        "h": 3
+      }
+    },
     "smoke_diffuse.png": {
       "frame": {
         "x": 0,

@@ -95,10 +95,11 @@ Renderer3d.prototype.modelToCamera = function() {
 Renderer3d.prototype.render = function(cb) {
   var gl = this.gl_;
   gl.clearColor(0, 0, 0, 1);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
   gl.enable(gl.BLEND);
   gl.enable(gl.DEPTH_TEST);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.disable(gl.CULL_FACE);
+  gl.clear(gl.COLOR_BUFFER_BIT);
 
   var cPos = this.cameraPos_;
   var cTar = this.cameraTarget_;
@@ -119,6 +120,9 @@ Renderer3d.prototype.renderOneSprite_ = function(sprite) {
     mtrxStack.x(geom.Mat4.translate(sprite.pos_.x, sprite.pos_.y, sprite.pos_.z));
     if (sprite.w_ != 1 || sprite.h_ != 1) {
       mtrxStack.x(geom.Mat4.diag(sprite.w_, sprite.h_, 1));
+    }
+    if (sprite.axis_) {
+      mtrxStack.x(geom.Mat4.rotate(sprite.axis_, sprite.angle_));
     }
 
     var modelToCamera = mtrxStack.top();
@@ -724,6 +728,11 @@ Sprite.prototype.setPos = function(x, y, opt_z) {
   this.pos_.x = x;
   this.pos_.y = y;
   this.pos_.z = z;
+};
+
+Sprite.prototype.setRotation = function(axis, angle) {
+  this.axis_ = axis;
+  this.angle_ = angle;
 };
 
 Sprite.prototype.setTexture = function(txt) {
