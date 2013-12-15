@@ -188,10 +188,10 @@ Game.prototype.spawn = function(kind, pos) {
       tick: function(t) {
         this.left -= t;
         var alpha = Math.sqrt(this.left / 0.5);
-        this.sprite.colorFilter = new geom.Vec3(-alpha, -alpha, -alpha);
+        this.sprite.setScale(1 - alpha, 1 - alpha);
         if (this.left <= 0) {
           this.dead = true;
-          this.sprite.colorFilter = null;
+          this.sprite.setScale(1, 1);
           this.sprite.stage.removeSprite(this.sprite);
           this.sprite = null;
           this.game.addEnemy(this.spinner);
