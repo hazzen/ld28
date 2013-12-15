@@ -153,7 +153,7 @@ DeathState.prototype.exit = function() {
 
 var PlayState = function() {
   this.stage = new Stage(WIDTH, HEIGHT);
-  this.seed = 42;
+  this.seed = +Date.now();
   this.recordings = [];
   this.game = new Game(this.seed, this.recordings, this.stage);
 };
@@ -450,6 +450,13 @@ Game.prototype.tick = function(t) {
       var x = this.detRand.nextInt(-350, 350);
       var y = this.detRand.nextInt(-250, 250);
       this.spawn('spinner', new geom.Vec2(x, y));
+    }
+  }
+  if (justPassed >= 12 && justPassed % 6 == 0) {
+    for (var i = 0; i < 5; i++) {
+      var x = this.detRand.nextInt(-350, 350);
+      var y = this.detRand.nextInt(-250, 250);
+      this.spawn('puffer', new geom.Vec2(x, y));
     }
   }
 };
