@@ -813,6 +813,10 @@ Sprite.prototype.setRotation = function(axis, angle) {
   this.angle_ = angle;
 };
 
+Sprite.prototype.axis = function() {
+  return this.axis_;
+};
+
 Sprite.prototype.setTexture = function(txt) {
   this.texture = txt;
   this.w_ = txt.w;

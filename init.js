@@ -94,7 +94,12 @@ MainMenu.prototype.enter = function() {
 
 var DeathState = function(play) {
   this.play = play;
-  this.gameOver = this.play.game.killers.length != 0;
+  var unmerged = this.play.game.players.filter(function(p) {
+    return p && !p.dead;
+  }).length;
+  // This doesn't allow you to suicide and save a previous run.
+  this.gameOver = this.play.game.killers.length != 0 || unmerged > 0;
+  this.gameOver = this.play.game.killers.length != 0 || !this.play.game.players[0].dead;
   this.stage = play.stage;
   this.t = 0;
   this.delayTime = 2;
@@ -184,6 +189,7 @@ var Game = function(seed, recordings, stage) {
   for (var i = 0; i < recordings.length; i++) {
     this.players.push(new Player(recordings[i]));
   }
+  this.players[0].sprite.colorFilter = new geom.Vec3(1.2, 1, 1);
   this.killers = this.players.map(function(p) { return p.wasKilledBy; })
     .filter(isDef);
   this.enemies = [];
@@ -679,6 +685,7 @@ HomingController.prototype.tick = function(t) {
   }
   this.me.vel.x = 100 * Math.cos(myTheta);
   this.me.vel.y = 100 * Math.sin(myTheta);
+  this.me.sprite.setRotation(this.me.sprite.axis(), myTheta);
 };
 
 var Bullet = function(name, opts) {
@@ -755,7 +762,7 @@ Particle.prototype.tick = function(t) {
 };
 
 var BreakSprite = function(sprite) {
-  if (sprite.axis) throw 'Cannae break rotated sprites';
+  if (sprite.axis()) throw 'Cannae break rotated sprites';
   var center = sprite.pos();
   var dims = sprite.size();
   var scale = sprite.scale();
@@ -811,7 +818,7 @@ var Puffer = function(pos, id) {
 
 Puffer.prototype.setKiller = function() {
   this.killer = true;
-  this.sprite.colorFilter = new geom.Vec3(0.2, 0.2, 1);
+  this.sprite.colorFilter = new geom.Vec3(-0.2, 1.2, 1);
 };
 
 Puffer.prototype.hit = function(damage) {
@@ -867,7 +874,7 @@ var Spinner = function(pos, id) {
 
 Spinner.prototype.setKiller = function() {
   this.killer = true;
-  this.sprite.colorFilter = new geom.Vec3(0.2, 0.2, 1);
+  this.sprite.colorFilter = new geom.Vec3(0.2, 1.2, 1);
 };
 
 Spinner.prototype.hit = function(damage) {
@@ -926,12 +933,13 @@ var Enemy = function(pos, controller, id) {
   this.sprite.setTexture(RESOURCES['enemy_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['enemy_normal.png']);
   this.sprite.setPos(pos.x, pos.y, pos.z);
+  this.sprite.setRotation(new geom.Vec3(0, 0, 1));
   this.sprite.beat = id % 4;
 };
 
 Enemy.prototype.setKiller = function() {
   this.killer = true;
-  this.sprite.colorFilter = new geom.Vec3(0.2, 0.2, 1);
+  this.sprite.colorFilter = new geom.Vec3(-0.2, 8.2, 8);
 };
 
 Enemy.prototype.hit = function(damage) {
@@ -968,6 +976,7 @@ var Player = function(opt_recording) {
   this.sprite = new Sprite(RENDERER.gl());
   this.sprite.setTexture(RESOURCES['player_diffuse.png']);
   this.sprite.setNormalMap(RESOURCES['player_normal.png']);
+  this.sprite.setRotation(new geom.Vec3(0, 0, 1), 0);
   this.shotDir = new geom.Vec2(1, 0);
   this.targetShotDir = new geom.Vec2(1, 0);
 };
@@ -1036,6 +1045,7 @@ Player.prototype.tick = function(t) {
   }
   this.shotDir.x = Math.cos(myTheta);
   this.shotDir.y = Math.sin(myTheta);
+  this.sprite.setRotation(this.sprite.axis(), myTheta);
 
   if (this.controller.shoot()) {
     GAME.addBullet(new Bullet('bullet', {
