@@ -24,7 +24,7 @@
         "h": 16
       }
     },
-    "killer_diffuse.png": {
+    "puffer_diffuse.png": {
       "frame": {
         "x": 32,
         "y": 0,
@@ -48,12 +48,36 @@
         "h": 16
       }
     },
+    "puffer_normal.png": {
+      "frame": {
+        "x": 32,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      }
+    },
     "bullet_diffuse.png": {
       "frame": {
         "x": 8,
         "y": 32,
         "w": 4,
         "h": 3
+      }
+    },
+    "grid_diffuse.png": {
+      "frame": {
+        "x": 88,
+        "y": 1,
+        "w": 16,
+        "h": 16
+      }
+    },
+    "grid_normal.png": {
+      "frame": {
+        "x": 88,
+        "y": 19,
+        "w": 16,
+        "h": 16
       }
     },
     "bullet_normal.png": {
