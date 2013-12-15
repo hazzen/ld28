@@ -104,6 +104,14 @@
         "h": 24
       }
     },
+    "txt_broken.png": {
+      "frame": {
+        "x": 0,
+        "y": 96,
+        "w": 83,
+        "h": 24
+      }
+    },
     "smoke_normal.png": {
       "frame": {
         "x": 0,

@@ -97,6 +97,17 @@ DeathState.prototype.tick = function(t) {
   this.stage.lighting().lights[1] = new Light(
       new geom.Vec3(20 * a, 200 * a, 100),
       new geom.Vec3(0.5 + 100 * a, 0.5 + 10 * a, 0.5 + 10 * a));
+  var fx = this.play.game.fx;
+  for (var i = 0; i < fx.length; i++) {
+    if (fx[i]) {
+      if (fx[i].dead) {
+        this.stage.removeSprite(fx[i].sprite);
+        fx[i] = null;
+      } else {
+        fx[i].tick(t);
+      }
+    }
+  }
   if (this.t >= this.delayTime) {
     GameState.pop();
     this.play.resetFromDeath();
@@ -110,6 +121,7 @@ DeathState.prototype.enter = function() {
   this.text.setSize(
       this.text.size().x * 3,
       this.text.size().y * 3);
+  BreakSprite(this.text);
   this.stage.addSprite(this.text);
 };
 
@@ -238,31 +250,13 @@ Game.prototype.removeBulletsFrom = function(shooter) {
 };
 
 Game.prototype.killerIsDead = function(killer) {
-  var pre = this.killers + '';
   for (var i = this.killers.length - 1; i >= 0; i--) {
     if (this.killers[i] == killer.id) {
       this.killers.splice(i, 1);
     }
   }
-  window.console.debug('killing', killer, 'took from [', pre, '] to [', this.killers, ']');
   if (this.killers.length == 0) {
-    var text = new Sprite(RENDERER.gl());
-    text.setTexture(RESOURCES['txt_restored.png']);
-    text.setSize(text.size().x * 3, text.size().y * 3);
-    var timed = {
-      left: 2,
-      sprite: text,
-      tick: function(t) {
-        this.left -= t;
-        this.sprite.visible = 3 != (Math.floor(this.left * 8) % 4);
-        if (this.left <= 0) {
-          this.dead = true;
-          this.sprite.stage.removeSprite(this.sprite);
-        }
-      }
-    };
-    this.stage.addSprite(text);
-    this.addFx(timed);
+    this.restoreNextFrame = killer;
   }
 };
 
@@ -294,6 +288,26 @@ Game.prototype.mergePlayer = function(player) {
 };
 
 Game.prototype.tick = function(t) {
+  if (this.restoreNextFrame) {
+    this.restoreNextFrame = false;
+    var text = new Sprite(RENDERER.gl());
+    text.setTexture(RESOURCES['txt_restored.png']);
+    text.setSize(text.size().x * 3, text.size().y * 3);
+    var timed = {
+      left: 2,
+      sprite: text,
+      tick: function(t) {
+        this.left -= t;
+        this.sprite.visible = 3 != (Math.floor(this.left * 8) % 4);
+        if (this.left <= 0) {
+          this.dead = true;
+          this.sprite.stage.removeSprite(this.sprite);
+        }
+      }
+    };
+    this.stage.addSprite(text);
+    this.addFx(timed);
+  }
   this.collidePlayersWithEnemies();
 
   for (var i = 0; i < this.bullets.length; i++) {
@@ -608,10 +622,17 @@ Bullet.prototype.tick = function(t) {
   this.sprite.addPos(this.vel.x * t, this.vel.y * t);
 };
 
-var Particle = function(name, opts) {
+var Particle = function(nameOrTextures, opts) {
   this.sprite = new Sprite(RENDERER.gl());
-  this.sprite.setTexture(RESOURCES[name + '_diffuse.png']);
-  this.sprite.setNormalMap(RESOURCES[name + '_normal.png']);
+  if (nameOrTextures.diffuse) {
+    var textures = nameOrTextures;
+    this.sprite.setTexture(textures.diffuse);
+    this.sprite.setNormalMap(textures.normal);
+  } else {
+    var name = nameOrTextures;
+    this.sprite.setTexture(RESOURCES[name + '_diffuse.png']);
+    this.sprite.setNormalMap(RESOURCES[name + '_normal.png']);
+  }
   this.sprite.setPos(opts.pos.x, opts.pos.y, opts.pos.z || -1);
   this.vel = opts.vel;
   this.rotAxis = new geom.Vec3(
@@ -622,8 +643,11 @@ var Particle = function(name, opts) {
     this.size.x *= opts.scale;
     this.size.y *= opts.scale;
     this.sprite.setSize(this.size.x, this.size.y);
+  } else if (isDef(opts.size)) {
+    this.sprite.setSize(opts.size.x, opts.size.y);
   }
   this.life = this.duration = opts.duration || 2;
+  this.shrink = isDef(opts.shrink) ? opts.shrink : true;
 };
 
 Particle.prototype.tick = function(t) {
@@ -637,7 +661,41 @@ Particle.prototype.tick = function(t) {
   this.sprite.setRotation(this.rotAxis, this.rotAngle);
 
   var alpha = this.life / this.duration;
-  this.sprite.setSize(this.size.x * alpha, this.size.y * alpha);
+  if (this.shrink) {
+    this.sprite.setSize(this.size.x * alpha, this.size.y * alpha);
+  }
+};
+
+var BreakSprite = function(sprite) {
+  if (sprite.axis) throw 'Cannae break rotated sprites';
+  var center = sprite.pos();
+  var dims = sprite.size();
+  var dsw = dims.x / sprite.texture.w;
+  var dsh = dims.y / sprite.texture.h;
+  var nsw = dims.x / sprite.normalMap.w;
+  var nsh = dims.y / sprite.normalMap.h;
+  var hw = dims.x / 2;
+  var hh = dims.y / 2;
+  for (var y = -hh; y < hh; y += 16) {
+    for (var x = -hw; x < hw; x += 16) {
+      var textures = {
+        diffuse: Texture.sub(
+            sprite.texture, new geom.Vec2((hw + x) / dsw, (hh + y) / dsh),
+            new geom.Vec2(16 / dsw, 16 / dsh)),
+        normal: Texture.sub(
+            sprite.normalMap, new geom.Vec2((hw + x) / nsw, (hh + y) / nsh),
+            new geom.Vec2(16 / nsw, 16 / nsh)),
+      };
+
+      GAME.addFx(new Particle(textures, {
+        life: randFlt(1.5, 2),
+        pos: new geom.Vec3(center.x + x, center.y - y, center.z),
+        vel: new geom.Vec3(x, -y, 0).normalize().times(randFlt(15, 27)),
+        size: new geom.Vec2(16, 16),
+        shrink: false,
+      }));
+    }
+  }
 };
 
 var Explode = function(where, size) {

@@ -91,6 +91,7 @@ Batch.prototype.reset = function() {
   var gl = this.gl_;
   this.buffer = new Float32Array(this.size * Batch.ELEM_SIZE * 4);
   this.elements = new Uint16Array(this.size * 6);
+  // TODO: cleanup old buffers to stop leaks. Like woah.
   this.verBuffer = gl.createBuffer();
   this.eleBuffer = gl.createBuffer();
 
@@ -622,6 +623,29 @@ Texture.ofColor = function(gl, color, opt_dims) {
     ctx.fillStyle = color;
     ctx.fillRect(0, 0, dims.width, dims.height);
   });
+};
+
+Texture.sub = function(other, ul, dims) {
+  var atlas = {x: 0, y: 0, w: 1, h: 1};
+  if (other.atlas) {
+    atlas.x = other.atlas.x;
+    atlas.y = other.atlas.y;
+    atlas.w = other.atlas.w;
+    atlas.h = other.atlas.h;
+  }
+  var maxw = atlas.x + atlas.w;
+  var maxh = atlas.y + atlas.h;
+  atlas.x += Math.min(atlas.w, ul.x / other.w * atlas.w);
+  atlas.y += Math.min(atlas.h, ul.y / other.h * atlas.h);
+  atlas.w = atlas.w * dims.x / other.w;
+  atlas.h = atlas.h * dims.y / other.h;
+  if (atlas.x + atlas.w > maxw) atlas.w = maxw - atlas.x;
+  if (atlas.y + atlas.h > maxh) atlas.h = maxh - atlas.y;
+  var texture = new Texture(
+      other.gl,  other.texture, other.name, atlas);
+  texture.w = dims.x;
+  texture.h = dims.y;
+  return texture;
 };
 
 Texture.load = function(gl, src, onDone) {
