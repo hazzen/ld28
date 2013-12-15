@@ -41,7 +41,8 @@ MatrixStack.prototype.pop = function() {
 };
 
 
-function Batch(key, gl) {
+function Batch(key, stage, gl) {
+  this.stage = stage;
   this.key = key;
   this.gl_ = gl;
   this.size = 16;
@@ -158,10 +159,11 @@ Batch.prototype.fillBuffers = function(mtx) {
       if (sprite.w_ != 1 || sprite.h_ != 1) {
         mtx.x(geom.Mat4.diag(sprite.w_, sprite.h_, 1));
       }
-      c0.x = -0.5; c0.y =  0.5; c0.z = 0;
-      c1.x =  0.5; c1.y =  0.5; c1.z = 0;
-      c2.x = -0.5; c2.y = -0.5; c2.z = 0;
-      c3.x =  0.5; c3.y = -0.5; c3.z = 0;
+      var b = Math.sin(Math.PI * this.stage.beat[sprite.beat || 0]) / 5;
+      c0.x = -0.5 - b; c0.y =  0.5 + b; c0.z = 0;
+      c1.x =  0.5 + b; c1.y =  0.5 + b; c1.z = 0;
+      c2.x = -0.5 - b; c2.y = -0.5 - b; c2.z = 0;
+      c3.x =  0.5 + b; c3.y = -0.5 - b; c3.z = 0;
       mtx.m_scaleVec(c0); mtx.m_scaleVec(c1);
       mtx.m_scaleVec(c2); mtx.m_scaleVec(c3);
       var po = this.offsets['position'] + i * this.steps * 4;
@@ -199,7 +201,7 @@ Batch.prototype.fillBuffers = function(mtx) {
 
 
 function Stage(width, height) {
-  this.beat1 = this.beat2 = this.beat3 = this.beat4 = 1;
+  this.beat = [1,1,1,1];
   this.modelToCamera_ = new MatrixStack();
   this.cameraPos_ = new geom.Vec3(0, 0, 10);
   this.cameraTarget_ = new geom.Vec3(0, 0, 0);
@@ -219,14 +221,14 @@ Stage.prototype.clear = function() {
 
 Stage.prototype.tick = function(t) {
   this.lighting_.tick(t);
-  this.beat1 += t;
-  this.beat2 += t / 3;
-  this.beat3 += t / 5;
-  this.beat4 += t / 7;
-  this.beat1 %= 1;
-  this.beat2 %= 1;
-  this.beat3 %= 1;
-  this.beat4 %= 1;
+  this.beat[0] += t;
+  this.beat[1] += t / 3;
+  this.beat[2] += t / 5;
+  this.beat[3] += t / 7;
+  this.beat[0] %= 1;
+  this.beat[1] %= 1;
+  this.beat[2] %= 1;
+  this.beat[3] %= 1;
 };
 
 Stage.prototype.lighting = function() {
@@ -244,7 +246,7 @@ Stage.prototype.addSprite = function(sprite) {
     }
   }
   if (!batch) {
-    batch = new Batch(batchKey, sprite.gl_);
+    batch = new Batch(batchKey, this, sprite.gl_);
     this.batches_.push(batch);
   }
   batch.addSprite(sprite);
@@ -374,10 +376,10 @@ Renderer3d.prototype.useProgram_ = function(prog) {
 
     this.stage_.lighting_.bind_(this);
     gl.uniform4f(prog.getUniformLocation('beats'),
-        Math.sin(Math.PI * this.stage_.beat1),
-        Math.sin(Math.PI * this.stage_.beat2),
-        Math.sin(Math.PI * this.stage_.beat3),
-        Math.sin(Math.PI * this.stage_.beat3));
+        Math.sin(Math.PI * this.stage_.beat[0]),
+        Math.sin(Math.PI * this.stage_.beat[1]),
+        Math.sin(Math.PI * this.stage_.beat[2]),
+        Math.sin(Math.PI * this.stage_.beat[3]));
   }
 };
 
@@ -795,7 +797,6 @@ SHARED_SHADER = {
     'uniform mat4 modelToCameraMatrix;',
     'uniform mat3 normalModelToCameraMatrix;',
     'uniform vec3 lightPos;',
-    'uniform int beat;',
     'uniform vec4 beats;',
   ].join('\n'),
 
