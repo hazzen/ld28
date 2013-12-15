@@ -73,7 +73,7 @@ var Story = function() {
     'If you die, you get one chance to go back.',
     'One chance to kill your killer.',
     'And if you die before that,',
-    'who the hell did we send back?',
+    'who the hell got sent back?',
   ];
   this.sprites = [];
 };
@@ -193,6 +193,17 @@ DeathState.prototype.enter = function() {
   this.text = new Sprite(RENDERER.gl());
   if (this.gameOver) {
     this.text.setTexture(RESOURCES['txt_broken.png']);
+    var score = new Sprite(RENDERER.gl());
+    var line = 'total time: ' + this.play.score.toFixed(4);
+    score.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: 256, height: 32}, function(ctx) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(line, 128, 16);
+    }));
+    score.setPos(0, -128, 20);
+    this.stage.addSprite(score);
+    score.beat = 3;
   } else {
     this.text.setTexture(RESOURCES['txt_fractured.png']);
   }
@@ -209,6 +220,7 @@ DeathState.prototype.exit = function() {
 var PlayState = function() {
   this.stage = new Stage(WIDTH, HEIGHT);
   this.seed = +Date.now();
+  this.score = 0;
   this.recordings = [];
   this.game = new Game(this.seed, this.recordings, this.stage);
 };
@@ -229,6 +241,7 @@ PlayState.prototype.tick = function(t) {
     this.recordings.unshift(this.game.players[0].getRecording());
     this.restoreText && this.restoreText.stage.removeSprite(this.restoreText);
     this.restoreText = null;
+    this.score += this.game ? this.game.survivedTime : 0;
     GameState.push(new DeathState(this));
     return;
   }
