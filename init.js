@@ -198,14 +198,14 @@ Game.prototype.enter = function() {
   this.stage.lighting().lights[3] = Light.globalLight(
       new geom.Vec3(1, 1, -1), new geom.Vec3(0.8, 0.8, 0.8));
 
-  for (var i = 0; i < 50; i++) {
+  for (var i = 0; i < 30; i++) {
     var x = this.detRand.nextSign();
     x *= this.detRand.nextFloat(100, 300);
     var y = this.detRand.nextSign();
     y *= this.detRand.nextFloat(100, 200);
     this.spawn('homing', new geom.Vec3(x, y, 0));
   }
-  for (var i = 50; i < 60; i++) {
+  for (var i = 30; i < 40; i++) {
     var x = this.detRand.nextSign();
     x *= this.detRand.nextFloat(100, 300);
     var y = this.detRand.nextSign();
@@ -288,6 +288,7 @@ Game.prototype.mergePlayer = function(player) {
 };
 
 Game.prototype.tick = function(t) {
+  this.t += t;
   if (this.restoreNextFrame) {
     this.restoreNextFrame = false;
     var text = new Sprite(RENDERER.gl());
@@ -357,6 +358,12 @@ Game.prototype.tick = function(t) {
         this.fx[i].tick(t);
       }
     }
+  }
+
+  if (this.detRand.nextInt(500) == 1) {
+    var theta = this.detRand.nextFloat(Math.PI * 2);
+    this.spawn('homing',
+        new geom.Vec2(WIDTH * Math.cos(theta), HEIGHT * Math.sin(theta)));
   }
 };
 

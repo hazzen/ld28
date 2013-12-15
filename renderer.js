@@ -91,7 +91,6 @@ Batch.prototype.reset = function() {
   var gl = this.gl_;
   this.buffer = new Float32Array(this.size * Batch.ELEM_SIZE * 4);
   this.elements = new Uint16Array(this.size * 6);
-  // TODO: cleanup old buffers to stop leaks. Like woah.
   this.verBuffer = gl.createBuffer();
   this.eleBuffer = gl.createBuffer();
 
