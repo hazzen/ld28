@@ -57,6 +57,61 @@ var scaleCanvas = function(view) {
   view.style.webkitTransform = "scale(" + 1 / scaleToFit + ")";
 
   view.style.marginLeft = ((view.width / scaleToFit) / -2) + 'px';
+
+  view.parentElement.parentElement.style.width = (window.innerWidth - 50) + 'px';
+  view.parentElement.parentElement.style.height = (window.innerHeight - 50)+ 'px';
+};
+
+var Story = function() {
+  this.stage = new Stage(WIDTH, HEIGHT);
+  this.t = 0;
+  this.line = 0;
+  this.lines = [
+    'What we have here, recruit, is a war.',
+    'Hell, we had a war. What we have now is you.',
+    'And a time machine.',
+    'If you die, you get one chance to go back.',
+    'One chance to kill your killer.',
+    'And if you die before that,',
+    'who the hell did we send back?',
+  ];
+  this.sprites = [];
+};
+
+Story.prototype.tick = function(t) {
+  this.t += t;
+  if (KB.keyPressed(Keys.ENTER)) {
+    this.line++;
+    this.t = this.line * 2;
+  }
+  if (this.t > (this.lines.length * 2)) {
+    GameState.push(new MainMenu());
+  }
+  for (var i = 0; i < this.sprites.length; i++) {
+    var a = 0;
+    if (this.t > (i * 2) && this.t < (i * 2 + 2)) {
+      a = Math.min(1, this.t - i * 2);
+    }
+    this.sprites[i].setScale(a, a);
+  }
+};
+
+Story.prototype.enter = function() {
+  this.stage.lighting().ambient = new geom.Vec3(1, 1, 1);
+  for (var i = 0; i < this.lines.length; i++) {
+    var text = new Sprite(RENDERER.gl());
+    var line = this.lines[i];
+    text.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: WIDTH, height: 32}, function(ctx) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(line, WIDTH / 2, 16);
+    }));
+    text.beat = -1;
+    this.stage.addSprite(text);
+    text.setScale(0, 0);
+    this.sprites.push(text);
+  }
 };
 
 var MainMenu = function() {
@@ -1113,7 +1168,7 @@ var init = function() {
 
   loader.load(function(resources) {
     RESOURCES = resources;
-    GameState.push(new MainMenu());
+    GameState.push(new Story());
     Pidgine.run(gameStruct);
   });
 };

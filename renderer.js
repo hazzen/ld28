@@ -162,6 +162,7 @@ Batch.prototype.fillBuffers = function(mtx) {
         mtx.x(geom.Mat4.diag(size.x, size.y, 1));
       }
       var b = Math.sin(Math.PI * this.stage.beat[sprite.beat || 0]) / 5;
+      if (sprite.beat < 0) b = 0;
       c0.x = -0.5 - b; c0.y =  0.5 + b; c0.z = 0;
       c1.x =  0.5 + b; c1.y =  0.5 + b; c1.z = 0;
       c2.x = -0.5 - b; c2.y = -0.5 - b; c2.z = 0;
