@@ -101,11 +101,11 @@ Story.prototype.enter = function() {
   for (var i = 0; i < this.lines.length; i++) {
     var text = new Sprite(RENDERER.gl());
     var line = this.lines[i];
-    text.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: WIDTH, height: 32}, function(ctx) {
+    text.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: 1024, height: 32}, function(ctx) {
       ctx.fillStyle = '#fff';
       ctx.font = '20px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(line, WIDTH / 2, 16);
+      ctx.fillText(line, 1024 / 2, 16);
     }));
     text.beat = -1;
     this.stage.addSprite(text);

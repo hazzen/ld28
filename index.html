@@ -1,12 +1,7 @@
 <html>
   <head>
-    <title>ld28</title>
-    <script type='text/javascript' src='core.js'></script>
-    <script type='text/javascript' src='pidgine.js'></script>
-    <script type='text/javascript' src='state.js'></script>
-    <script type='text/javascript' src='geom.js'></script>
-    <script type='text/javascript' src='renderer.js'></script>
-    <script type='text/javascript' src='init.js'></script>
+    <title>Save Yourself</title>
+    <script type='text/javascript' src='game.min.js'></script>
     <style type='text/css'>
       body {
         background-color: #999;
@@ -16,9 +11,6 @@
         outline: none;
       }
       canvas {
-        image-rendering: crisp-edges;
-        image-rendering: -moz-crisp-edges;
-        image-rendering: -webkit-optimize-contrast;
         position: absolute;
         outline: none;
         left: 50%;
@@ -32,6 +24,18 @@
     </style>
   </head>
   <body>
+    <script type="text/javascript">
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-24357809-1']);
+      _gaq.push(['_setDomainName', 'hazzens.com']);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+    </script>
     <div>
       <div id="game" tabindex="0">
       </div>
