@@ -65,7 +65,6 @@ var MainMenu = function() {
 
 MainMenu.prototype.tick = function() {
   if (KB.keyPressed(Keys.ENTER)) {
-    GameState.pop();
     GameState.push(new PlayState());
   }
 };
@@ -84,6 +83,7 @@ MainMenu.prototype.enter = function() {
 
 var DeathState = function(play) {
   this.play = play;
+  this.gameOver = this.play.game.killers.length != 0;
   this.stage = play.stage;
   this.t = 0;
   this.delayTime = 2;
@@ -110,13 +110,21 @@ DeathState.prototype.tick = function(t) {
   }
   if (this.t >= this.delayTime) {
     GameState.pop();
-    this.play.resetFromDeath();
+    if (this.gameOver) {
+      GameState.pop();
+    } else {
+      this.play.resetFromDeath();
+    }
   }
 };
 
 DeathState.prototype.enter = function() {
   this.text = new Sprite(RENDERER.gl());
-  this.text.setTexture(RESOURCES['txt_fractured.png']);
+  if (this.gameOver) {
+    this.text.setTexture(RESOURCES['txt_broken.png']);
+  } else {
+    this.text.setTexture(RESOURCES['txt_fractured.png']);
+  }
   this.text.setPos(0, 0, 50);
   this.text.setScale(3, 3);
   BreakSprite(this.text);
@@ -180,14 +188,16 @@ Game.prototype.spawn = function(kind, pos) {
           this.id));
   } else if (kind == 'spinner') {
     var spinner = new Spinner(pos, this.id);
+    spinner.sprite.setScale(0.01, 0.01);
+    spinner.tick(0);
     var timed = {
       game: this,
       spinner: spinner,
       sprite: spinner.sprite,
-      left: 0.5,
+      left: 1,
       tick: function(t) {
         this.left -= t;
-        var alpha = Math.sqrt(this.left / 0.5);
+        var alpha = Math.max(0.01, Math.pow(this.left, 2));
         this.sprite.setScale(1 - alpha, 1 - alpha);
         if (this.left <= 0) {
           this.dead = true;
@@ -203,6 +213,7 @@ Game.prototype.spawn = function(kind, pos) {
 };
 
 Game.prototype.enter = function() {
+  this.t = 0;
   this.id = 0;
   for (var i = 0; i < this.players.length; i++) {
     this.stage.addSprite(this.players[i].sprite);
@@ -379,10 +390,23 @@ Game.prototype.tick = function(t) {
     }
   }
 
-  if (this.detRand.nextInt(500) == 1) {
-    var theta = this.detRand.nextFloat(Math.PI * 2);
-    this.spawn('homing',
-        new geom.Vec2(WIDTH * Math.cos(theta), HEIGHT * Math.sin(theta)));
+  var justPassed = 0;
+  if (Math.floor(this.t) != Math.floor(this.t - t)) {
+    justPassed = Math.floor(this.t);
+  }
+  if (justPassed == 10 || (justPassed > 10 && justPassed % 5 == 0)) {
+    for (var i = 0; i < 20; i++) {
+      var theta = this.detRand.nextFloat(Math.PI * 2);
+      this.spawn('homing',
+          new geom.Vec2(WIDTH * Math.cos(theta), HEIGHT * Math.sin(theta)));
+    }
+  }
+  if (justPassed >= 8 && justPassed % 4 == 0) {
+    for (var i = 0; i < 2; i++) {
+      var x = this.detRand.nextInt(-350, 350);
+      var y = this.detRand.nextInt(-250, 250);
+      this.spawn('spinner', new geom.Vec2(x, y));
+    }
   }
 };
 
