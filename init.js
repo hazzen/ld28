@@ -80,6 +80,17 @@ MainMenu.prototype.enter = function() {
     ctx.fillText('You Only Get One', 128, 16);
   }));
   this.stage.addSprite(text);
+
+  var text = new Sprite(RENDERER.gl());
+  text.setTexture(Texture.fromCanvas(RENDERER.gl(), {width: 256, height: 32}, function(ctx) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('THE GAME', 128, 16);
+  }));
+  text.setPos(50, 100);
+  text.setRotation(new geom.Vec3(0, 0, 1), Math.PI / 2);
+  this.stage.addSprite(text);
 };
 
 var DeathState = function(play) {

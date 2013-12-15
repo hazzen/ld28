@@ -14,6 +14,14 @@ function MatrixStack() {
   this.stack_ = [geom.Mat4.ident()];
 };
 
+MatrixStack.prototype.scaleVec = function(v) {
+  return this.stack_[this.stack_.length - 1].scaleVec(v);
+};
+
+MatrixStack.prototype.m_scaleVec = function(v) {
+  return this.stack_[this.stack_.length - 1].m_scaleVec(v);
+};
+
 MatrixStack.prototype.top = function() {
   return this.stack_[this.stack_.length - 1].clone();
 };
@@ -33,6 +41,163 @@ MatrixStack.prototype.pop = function() {
 };
 
 
+function Batch(key, gl) {
+  this.key = key;
+  this.gl_ = gl;
+  this.size = 16;
+  this.sprites_ = [];
+  this.reset();
+};
+Batch.getKey = function(sprite) {
+  if (sprite.mtl) return '';
+  var texture1 = sprite.texture.name;
+  var texture2 = sprite.normalMap.name;
+  if (texture1 == texture2) return texture1;
+  return texture1 + ' ' + texture2;
+};
+
+Batch.KINDS = {
+  position: {size: 3},
+  texCord: {size: 2},
+  norCord: {size: 2},
+  colorFilter: {size: 3},
+};
+
+Batch.ELEM_SIZE =
+  3 +  // vec3: position
+  2 +  // vec2: texCord
+  2 +  // vec2: norCord
+  3;   // vec3: colorFilter
+
+Batch.prototype.addSprite = function(sprite) {
+  this.diffuseTexture = sprite.texture.texture;
+  this.normalTexture = sprite.normalMap.texture;
+  this.sprites_.push(sprite);
+  if (this.size < this.sprites_.length) {
+    this.size = Math.floor(this.size * 1.5);
+    this.reset();
+  }
+};
+
+Batch.prototype.removeSprite = function(sprite) {
+  var index = this.sprites_.indexOf(sprite);
+  if (index == -1) throw 'Sprite not a child!';
+  this.sprites_[index] = this.sprites_[this.sprites_.length - 1];
+  this.sprites_.pop();
+};
+
+Batch.prototype.reset = function() {
+  var gl = this.gl_;
+  this.buffer = new Float32Array(this.size * Batch.ELEM_SIZE * 4);
+  this.elements = new Uint16Array(this.size * 6);
+  this.verBuffer = gl.createBuffer();
+  this.eleBuffer = gl.createBuffer();
+
+  this.offsets = {};
+  var offset = 0;
+  for (var kind in Batch.KINDS) {
+    this.offsets[kind] = offset;
+    offset += Batch.KINDS[kind].size;
+  }
+  this.steps = Batch.ELEM_SIZE;
+
+  for (var i = 0; i < this.size; i++) {
+    this.elements[i * 6 + 0] = i * 4 + UNIT_SQUARE_ELEMS[0];
+    this.elements[i * 6 + 1] = i * 4 + UNIT_SQUARE_ELEMS[1];
+    this.elements[i * 6 + 2] = i * 4 + UNIT_SQUARE_ELEMS[2];
+    this.elements[i * 6 + 3] = i * 4 + UNIT_SQUARE_ELEMS[3];
+    this.elements[i * 6 + 4] = i * 4 + UNIT_SQUARE_ELEMS[4];
+    this.elements[i * 6 + 5] = i * 4 + UNIT_SQUARE_ELEMS[5];
+  }
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.eleBuffer);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.elements, gl.STATIC_DRAW);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.verBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, this.buffer, gl.DYNAMIC_DRAW);
+};
+
+Batch.prototype.draw = function(mtx, prog) {
+  var gl = this.gl_;
+  this.fillBuffers(mtx);
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.verBuffer);
+	gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.buffer)
+  for (var kind in this.offsets) {
+    var offset = this.offsets[kind];
+    var kindStruct = Batch.KINDS[kind];
+    gl.vertexAttribPointer(
+        prog.getAttribLocation(kind),
+        kindStruct.size,
+        gl.FLOAT,
+        false,
+        this.steps * Float32Array.BYTES_PER_ELEMENT,
+        offset * Float32Array.BYTES_PER_ELEMENT);
+  }
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.eleBuffer);
+
+  gl.drawElements(
+      gl.TRIANGLES,
+      this.sprites_.length * 6,
+      gl.UNSIGNED_SHORT,
+      0);
+};
+
+Batch.prototype.fillBuffers = function(mtx) {
+  var c0 = new geom.Vec3(0,0,0);
+  var c1 = new geom.Vec3(0,0,0);
+  var c2 = new geom.Vec3(0,0,0);
+  var c3 = new geom.Vec3(0,0,0);
+  var v0 = new geom.Vec3(0,0,0);
+  for (var i = 0; i < this.sprites_.length; i++) {
+    var sprite = this.sprites_[i];
+    var cf = sprite.colorFilter || v0;
+    mtx.push();
+      mtx.x(geom.Mat4.translate(sprite.pos_.x, sprite.pos_.y, sprite.pos_.z));
+      if (sprite.axis_) {
+        mtx.x(geom.Mat4.rotate(sprite.axis_, sprite.angle_));
+      }
+      if (sprite.w_ != 1 || sprite.h_ != 1) {
+        mtx.x(geom.Mat4.diag(sprite.w_, sprite.h_, 1));
+      }
+      c0.x = -0.5; c0.y =  0.5; c0.z = 0;
+      c1.x =  0.5; c1.y =  0.5; c1.z = 0;
+      c2.x = -0.5; c2.y = -0.5; c2.z = 0;
+      c3.x =  0.5; c3.y = -0.5; c3.z = 0;
+      mtx.m_scaleVec(c0); mtx.m_scaleVec(c1);
+      mtx.m_scaleVec(c2); mtx.m_scaleVec(c3);
+      var po = this.offsets['position'] + i * this.steps * 4;
+      var to = this.offsets['texCord'] + i * this.steps * 4;
+      var no = this.offsets['norCord'] + i * this.steps * 4;
+      var co = this.offsets['colorFilter'] + i * this.steps * 4;
+      var datl = sprite.texture.atlas || {x: 0, y: 0, w: 1, h: 1};
+      var natl = sprite.normalMap.atlas || {x: 0, y: 0, w: 1, h: 1};
+      this.buffer[po + 0] = c0.x; this.buffer[po + 1] = c0.y; this.buffer[po + 2] = c0.z;
+      this.buffer[to + 0] = datl.x; this.buffer[to + 1] = datl.y;
+      this.buffer[no + 0] = natl.x; this.buffer[no + 1] = natl.y;
+      this.buffer[co + 0] = cf.x; this.buffer[co + 1] = cf.y; this.buffer[co + 2] = cf.z;
+
+      po += this.steps; to += this.steps; no += this.steps; co += this.steps;
+      this.buffer[po + 0] = c1.x; this.buffer[po + 1] = c1.y; this.buffer[po + 2] = c1.z;
+      this.buffer[to + 0] = datl.x + datl.w; this.buffer[to + 1] = datl.y;
+      this.buffer[no + 0] = natl.x + natl.w; this.buffer[no + 1] = natl.y;
+      this.buffer[co + 0] = cf.x; this.buffer[co + 1] = cf.y; this.buffer[co + 2] = cf.z;
+
+      po += this.steps; to += this.steps; no += this.steps; co += this.steps;
+      this.buffer[po + 0] = c2.x; this.buffer[po + 1] = c2.y; this.buffer[po + 2] = c2.z;
+      this.buffer[to + 0] = datl.x; this.buffer[to + 1] = datl.y + datl.h;
+      this.buffer[no + 0] = natl.x; this.buffer[no + 1] = natl.y + natl.h;
+      this.buffer[co + 0] = cf.x; this.buffer[co + 1] = cf.y; this.buffer[co + 2] = cf.z;
+
+      po += this.steps; to += this.steps; no += this.steps; co += this.steps;
+      this.buffer[po + 0] = c3.x; this.buffer[po + 1] = c3.y; this.buffer[po + 2] = c3.z;
+      this.buffer[to + 0] = datl.x + datl.w; this.buffer[to + 1] = datl.y + datl.h;
+      this.buffer[no + 0] = natl.x + natl.h; this.buffer[no + 1] = natl.y + natl.h;
+      this.buffer[co + 0] = cf.x; this.buffer[co + 1] = cf.y; this.buffer[co + 2] = cf.z;
+
+    mtx.pop();
+  }
+};
+
+
 function Stage(width, height) {
   this.beat1 = this.beat2 = this.beat3 = this.beat4 = 1;
   this.modelToCamera_ = new MatrixStack();
@@ -44,11 +209,11 @@ function Stage(width, height) {
 
   this.lighting_ = new Lighting(new geom.Vec3(0.1, 0.1, 0.1), 1 / (70 * 70));
 
-  this.sprites_ = [];
+  this.batches_ = [];
 };
 
 Stage.prototype.clear = function() {
-  this.sprites_ = [];
+  this.batches_ = [];
   this.lighting_ = new Lighting(new geom.Vec3(0.1, 0.1, 0.1), 1 / (70 * 70));
 };
 
@@ -69,16 +234,33 @@ Stage.prototype.lighting = function() {
 };
 
 Stage.prototype.addSprite = function(sprite) {
-  this.sprites_.push(sprite);
   sprite.stage = this;
+  var batchKey = Batch.getKey(sprite);
+  var batch;
+  for (var i = 0; i < this.batches_.length; i++) {
+    if (this.batches_[i].key == batchKey) {
+      batch = this.batches_[i];
+      break;
+    }
+  }
+  if (!batch) {
+    batch = new Batch(batchKey, sprite.gl_);
+    this.batches_.push(batch);
+  }
+  batch.addSprite(sprite);
 };
 
 Stage.prototype.removeSprite = function(sprite) {
-  var index = this.sprites_.indexOf(sprite);
-  if (index == -1) {
-    throw 'Sprite not a child!';
+  var batchKey = Batch.getKey(sprite);
+  var batch;
+  for (var i = 0; i < this.batches_.length; i++) {
+    if (this.batches_[i].key == batchKey) {
+      batch = this.batches_[i];
+      break;
+    }
   }
-  this.sprites_.splice(index, 1);
+  if (!batch) throw 'Sprite not a child!';
+  batch.removeSprite(sprite);
 };
 
 
@@ -147,101 +329,24 @@ Renderer3d.prototype.render = function(stage) {
   this.modelToCamera().pop();
 };
 
-Renderer3d.prototype.renderOneSprite_ = function(sprite) {
-  var gl = this.gl_;
-  var mtrxStack = this.modelToCamera();
-  mtrxStack.push();
-    mtrxStack.x(geom.Mat4.translate(sprite.pos_.x, sprite.pos_.y, sprite.pos_.z));
-    if (sprite.w_ != 1 || sprite.h_ != 1) {
-      mtrxStack.x(geom.Mat4.diag(sprite.w_, sprite.h_, 1));
-    }
-    if (sprite.axis_) {
-      mtrxStack.x(geom.Mat4.rotate(sprite.axis_, sprite.angle_));
-    }
-
-    var modelToCamera = mtrxStack.top();
-
-    var normalModelToCamera = modelToCamera.inverseTranspose();
-
-    gl.uniformMatrix4fv(this.prog_.getUniformLocation('modelToCameraMatrix'),
-        false, new Float32Array(modelToCamera.flatten()));
-    gl.uniformMatrix3fv(this.prog_.getUniformLocation('normalModelToCameraMatrix'),
-        false, new Float32Array(normalModelToCamera));
-
-    sprite.renderImpl_(this.prog_);
-  mtrxStack.pop();
-};
-
 Renderer3d.prototype.renderSprites_ = function() {
   var gl = this.gl_;
 
-  if (!this.stage_.sprites_.length) return;
-
-  var flatByColor = {};
-  var byTexture = {};
-  var textureInfo = {};
-  for (var i = 0; i < this.stage_.sprites_.length; i++) {
-    var sprite = this.stage_.sprites_[i];
-    if (sprite.material) {
-      putDefault(flatByColor, sprite.material.diffuseColor, []).push(sprite);
-    } else if (sprite.texture) {
-      var name = sprite.texture.name + ' ' + sprite.normalMap.name;
-      textureInfo[name] = {
-        diffuse: sprite.texture,
-        normal: sprite.normalMap
-      };
-      putDefault(byTexture, name, []).push(sprite);
-    } else {
-      throw 'Cannae render sprite, capn!';
-    }
-  }
-
-  this.useProgram_(this.shaders_.flatProg);
-
-  for (var colorKey in flatByColor) {
-    var sprites = flatByColor[colorKey];
-    for (var i = 0; i < sprites.length; i++) {
-      var sprite = sprites[i];
-      if (i == 0) {
-        gl.uniform4fv(this.prog_.getUniformLocation('diffuseColor'),
-            new Float32Array(sprite.material.diffuseColor));
-      }
-      if (!sprite.visible) continue;
-      this.renderOneSprite_(sprite);
-    }
-  }
+  if (!this.stage_.batches_.length) return;
 
   this.useProgram_(this.shaders_.texturedProg);
 
-  for (var textureKey in byTexture) {
-    var sprites = byTexture[textureKey];
-    var theTexture = textureInfo[textureKey];
+  for (var i = 0; i < this.stage_.batches_.length; i++) {
+    var batch = this.stage_.batches_[i];
+
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, theTexture.diffuse.texture);
+    gl.bindTexture(gl.TEXTURE_2D, batch.diffuseTexture);
     gl.uniform1i(this.prog_.getUniformLocation('diffuseSampler'), 0);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, theTexture.normal.texture);
+    gl.bindTexture(gl.TEXTURE_2D, batch.normalTexture);
     gl.uniform1i(this.prog_.getUniformLocation('normalSampler'), 1);
 
-    for (var i = 0; i < sprites.length; i++) {
-      var sprite = sprites[i];
-      if (!sprite.visible) continue;
-      if (sprite.texture.atlas) {
-        gl.uniform4f(this.prog_.getUniformLocation('diffuseCords'),
-            sprite.texture.atlas.x, sprite.texture.atlas.y,
-            sprite.texture.atlas.w, sprite.texture.atlas.h);
-      } else {
-        gl.uniform4f(this.prog_.getUniformLocation('diffuseCords'), 0, 0, 1, 1);
-      }
-      if (sprite.normalMap.atlas) {
-        gl.uniform4f(this.prog_.getUniformLocation('normalCords'),
-            sprite.normalMap.atlas.x, sprite.normalMap.atlas.y,
-            sprite.normalMap.atlas.w, sprite.normalMap.atlas.h);
-      } else {
-        gl.uniform4f(this.prog_.getUniformLocation('normalCords'), 0, 0, 1, 1);
-      }
-      this.renderOneSprite_(sprite);
-    }
+    batch.draw(this.modelToCamera(), this.prog_);
   }
 };
 
@@ -266,7 +371,6 @@ Renderer3d.prototype.useProgram_ = function(prog) {
     var cameraUniform = prog.getUniformLocation('cameraToClipMatrix');
     gl.uniformMatrix4fv(cameraUniform,
         false, new Float32Array(this.cameraToClip().flatten()));
-    UNIT_SQUARE_STRUCT.bindBuffers(gl, this.prog_);
 
     this.stage_.lighting_.bind_(this);
     gl.uniform4f(prog.getUniformLocation('beats'),
@@ -625,87 +729,6 @@ UNIT_SQUARE_ELEMS = [
   0, 3, 1,
 ];
 
-UNIT_SQUARE_STRUCT = undefined;
-
-var UnitSquare = function(gl) {
-  var verts = UNIT_SQUARE_DATA;
-  var elems = UNIT_SQUARE_ELEMS;
-
-  var size = Mesh.Vertex.sizeOf(verts);
-  var buf = new ArrayBuffer(verts.length * size);
-
-  var arrays = {};
-  var initialOffsets = {};
-  var offsets = {};
-  var steps = {};
-  var offset = 0;
-  var kinds = [];
-  for (var i = 0; i < Mesh.Vertex.KINDS.length; ++i) {
-    var kind = Mesh.Vertex.KINDS[i];
-    if (kind in verts[0]) {
-      kinds.push(kind);
-      var sizeStruct = Mesh.Vertex.KIND_SIZES[kind];
-      arrays[kind] = new sizeStruct.type(buf);
-      offsets[kind] = initialOffsets[kind] =
-          offset / sizeStruct.type.BYTES_PER_ELEMENT;
-      steps[kind] = size / sizeStruct.type.BYTES_PER_ELEMENT;
-      offset += sizeStruct.type.BYTES_PER_ELEMENT * sizeStruct.num;
-    }
-  }
-
-  for (var i = 0; i < verts.length; ++i) {
-    var vert = verts[i];
-    for (var kind in arrays) {
-      var sizeStruct = Mesh.Vertex.KIND_SIZES[kind];
-      for (var index = 0; index < sizeStruct.num; ++index) {
-        var v = vert[kind];
-        arrays[kind][offsets[kind] + index] = v[index] || 0;
-      }
-      offsets[kind] += steps[kind];
-    }
-  }
-
-  this.vertexData = {
-    buffer: buf,
-    size: size,
-    kinds: kinds,
-    offset: initialOffsets,
-    steps: steps,
-    arrays: arrays
-  };
-  this.vertexBuffer = gl.createBuffer();
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, this.vertexData.buffer, gl.STATIC_DRAW);
-
-  this.elementArrayBuffer = gl.createBuffer();
-  var elementData = new Uint16Array(elems);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.elementArrayBuffer);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, elementData, gl.STATIC_DRAW);
-};
-
-UnitSquare.prototype.bindBuffers = function(gl, program) {
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-  for (var i = 0 ; i < this.vertexData.kinds.length; ++i) {
-    var kind = this.vertexData.kinds[i];
-    var sizeStruct = Mesh.Vertex.KIND_SIZES[kind];
-    var normalize = sizeStruct.type == Uint8Array;
-    var glType = sizeStruct.type == Float32Array ? gl.FLOAT :
-                 sizeStruct.type == Uint8Array ? gl.UNSIGNED_BYTE : null;
-    var loc = program.getAttribLocation(kind);
-    if (loc != -1) {
-      gl.vertexAttribPointer(
-          loc,
-          sizeStruct.num,
-          glType,
-          normalize,
-          this.vertexData.size,
-          this.vertexData.offset[kind] * sizeStruct.type.BYTES_PER_ELEMENT);
-    }
-  }
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.elementArrayBuffer);
-};
-
 function Sprite(gl) {
   this.visible = true;
   this.gl_ = gl;
@@ -713,10 +736,6 @@ function Sprite(gl) {
   this.h_ = 1;
   this.pos_ = new geom.Vec3(0, 0, 0);
   this.beats = 0;
-
-  if (!UNIT_SQUARE_STRUCT) {
-    UNIT_SQUARE_STRUCT = new UnitSquare(gl);
-  }
 
   this.normalMap = Sprite.defaultNormalMap_(gl);
 };
@@ -770,59 +789,11 @@ Sprite.prototype.setNormalMap = function(txt) {
   this.normalMap = txt;
 };
 
-Sprite.prototype.setMaterial = function(mtl) {
-  this.material = mtl;
-};
-
-Sprite.prototype.renderImpl_ = function(prog) {
-  var gl = prog.gl_;
-
-  gl.uniform1i(prog.getUniformLocation('beat'), this.beat);
-  if (this.colorFilter) {
-    gl.uniform3f(prog.getUniformLocation('colorFilter'),
-        this.colorFilter.x, this.colorFilter.y, this.colorFilter.z);
-  } else {
-    gl.uniform3f(prog.getUniformLocation('colorFilter'), 0, 0, 0);
-  }
-
-  gl.drawElements(
-      gl.TRIANGLES,
-      UNIT_SQUARE_ELEMS.length,
-      gl.UNSIGNED_SHORT,
-      0);
-};
-
-var Mesh = {};
-
-Mesh.Vertex = {};
-Mesh.Vertex.KINDS = [
-  'position', 'normal', 'color', 'texCord',
-];
-
-Mesh.Vertex.KIND_SIZES = {
-  'position': {type: Float32Array, num: 4},
-  'normal': {type: Float32Array, num: 4},
-  'texCord': {type: Float32Array, num: 2},
-};
-
-Mesh.Vertex.sizeOf = function(vertexData) {
-  var vert = vertexData[0];
-  var size = 0;
-  for (var i = 0; i < Mesh.Vertex.KINDS.length; ++i) {
-    if (Mesh.Vertex.KINDS[i] in vert) {
-      var sizeStruct = Mesh.Vertex.KIND_SIZES[Mesh.Vertex.KINDS[i]];
-      size += sizeStruct.type.BYTES_PER_ELEMENT * sizeStruct.num;
-    }
-  }
-  return size;
-};
-
 SHARED_SHADER = {
   UNIFORMS: [
     'uniform mat4 cameraToClipMatrix;',
     'uniform mat4 modelToCameraMatrix;',
     'uniform mat3 normalModelToCameraMatrix;',
-    'uniform vec3 colorFilter;',
     'uniform vec3 lightPos;',
     'uniform int beat;',
     'uniform vec4 beats;',
@@ -831,20 +802,21 @@ SHARED_SHADER = {
   TEXTURE_SAMPLERS: [
     'uniform sampler2D diffuseSampler;',
     'uniform sampler2D normalSampler;',
-    'uniform vec4 diffuseCords;',
-    'uniform vec4 normalCords;',
   ].join('\n'),
 
   SPRITE_ATTR: [
     'attribute vec3 position;',
     'attribute vec2 texCord;',
+    'attribute vec2 norCord;',
+    'attribute vec3 colorFilter;',
   ].join('\n'),
 
   SPRITE_VARY: [
     'varying vec3 frag_position;',
     'varying vec4 frag_color;',
     'varying vec2 frag_texCord;',
-    'varying vec2 frag_normalTexCord;',
+    'varying vec2 frag_norCord;',
+    'varying vec3 frag_colorFilter;',
   ].join('\n'),
 
   LIGHT_UNIFORMS: [
@@ -889,56 +861,6 @@ SHARED_SHADER = {
 };
 
 SHADERS = {
-  FLAT_SPRITE_VERT: [
-    'precision mediump float;',
-    'precision mediump int;',
-    SHARED_SHADER.SPRITE_ATTR,
-    '',
-    SHARED_SHADER.UNIFORMS,
-    '',
-    SHARED_SHADER.LIGHT_UNIFORMS,
-    '',
-    'uniform vec4 diffuseColor;',
-    'varying vec3 frag_normal;',
-    '',
-    SHARED_SHADER.SPRITE_VARY,
-    '',
-    'void main(void) {',
-    '  vec4 fragP = modelToCameraMatrix * vec4((1.0 + 0.1 * beats[beat]) * position, 1.0);',
-    '  gl_Position = cameraToClipMatrix * fragP;',
-    '  frag_position = fragP.xyz;',
-    '  frag_color = diffuseColor;',
-    '  frag_normal = normalModelToCameraMatrix * vec3(0.0, 0.0, 1.0);',
-    '}',
-  ].join('\n'),
-
-  FLAT_SPRITE_FRAG: [
-    'precision mediump float;',
-    'precision mediump int;',
-    SHARED_SHADER.SPRITE_VARY,
-    '',
-    SHARED_SHADER.LIGHT_UNIFORMS,
-    SHARED_SHADER.CALC_LIGHT,
-    'varying vec3 frag_normal;',
-    '',
-    SHARED_SHADER.UNIFORMS,
-    '',
-    'void main(void) {',
-    '  vec4 accum = frag_color * lighting.ambient;',
-    '  for (int lightIndex = 0; lightIndex < numLights; lightIndex++) {',
-    '    Light light;',
-    '    light.cameraSpacePos = lighting.lights[lightIndex * 2];',
-    '    light.intensity = lighting.lights[lightIndex * 2 + 1];',
-    '    accum += CalcLight(frag_normal, frag_color, light);',
-    '  }',
-    '  accum = accum / lighting.maxIntensity;',
-    '  accum.w *= lighting.maxIntensity;',
-    '  vec4 gamma = vec4(1.0 / lighting.gamma);',
-    '  gamma.w = 1.0;',
-    '  gl_FragColor = pow(accum, gamma);',
-    '}',
-  ].join('\n'),
-
   TEXTURED_SPRITE_VERT: [
     'precision mediump float;',
     'precision mediump int;',
@@ -953,11 +875,12 @@ SHADERS = {
     SHARED_SHADER.SPRITE_VARY,
     '',
     'void main(void) {',
-    '  vec4 fragP = modelToCameraMatrix * vec4((1.0 + 0.1 * beats[beat]) * position, 1.0);',
+    '  vec4 fragP = vec4(position, 1.0);',
     '  gl_Position = cameraToClipMatrix * fragP;',
     '  frag_position = fragP.xyz;',
-    '  frag_texCord = diffuseCords.xy + (diffuseCords.zw * texCord);',
-    '  frag_normalTexCord = normalCords.xy + (normalCords.zw * texCord);',
+    '  frag_texCord = texCord;',
+    '  frag_norCord = norCord;',
+    '  frag_colorFilter = colorFilter;',
     '}',
   ].join('\n'),
 
@@ -974,9 +897,9 @@ SHADERS = {
     SHARED_SHADER.TEXTURE_SAMPLERS,
     '',
     'void main(void) {',
-    '  vec3 rawNormal = texture2D(normalSampler, frag_normalTexCord).rgb;',
+    '  vec3 rawNormal = texture2D(normalSampler, frag_norCord).rgb;',
     '  vec3 normal = normalize(2.0 * (rawNormal - vec3(0.5, 0.5, 0.5)));',
-    '  vec4 diffuse = vec4(colorFilter, 0.0) + texture2D(diffuseSampler, frag_texCord);',
+    '  vec4 diffuse = vec4(frag_colorFilter, 0.0) + texture2D(diffuseSampler, frag_texCord);',
     '  vec4 accum = diffuse * lighting.ambient;',
     '  for (int lightIndex = 0; lightIndex < numLights; lightIndex++) {',
     '    Light light;',
@@ -1003,15 +926,6 @@ GameShaders.prototype.load = function(renderer, opt_done) {
   this.loaded_ = true;
   var onDone = opt_done || function() {};
   var gl = renderer.gl();
-
-  var flatFrag = renderer.shaderFromText(
-      'FLAT_SPRITE_FRAG', SHADERS.FLAT_SPRITE_FRAG, gl.FRAGMENT_SHADER);
-
-  var flatVert = renderer.shaderFromText(
-      'FLAT_SPRITE_VERT', SHADERS.FLAT_SPRITE_VERT, gl.VERTEX_SHADER);
-
-  this.flatProg = renderer.shaderProgram(
-      'FLAT', [flatVert, flatFrag]);
 
   var texturedFrag = renderer.shaderFromText(
       'TEXTURED_SPRITE_FRAG', SHADERS.TEXTURED_SPRITE_FRAG, gl.FRAGMENT_SHADER);
