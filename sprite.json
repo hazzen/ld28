@@ -112,6 +112,14 @@
         "h": 24
       }
     },
+    "txt_desync.png": {
+      "frame": {
+        "x": 0,
+        "y": 120,
+        "w": 84,
+        "h": 37
+      }
+    },
     "smoke_normal.png": {
       "frame": {
         "x": 0,
@@ -124,8 +132,8 @@
   "meta": {
     "image": "sprite.png",
     "size": {
-      "w": 128,
-      "h": 128
+      "w": 256,
+      "h": 256
     }
   }
 }

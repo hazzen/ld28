@@ -871,10 +871,19 @@ Player.prototype.getRecording = function(source) {
   };
 };
 
-Player.prototype.kill = function(source) {
+Player.prototype.kill = function(killedBy) {
   if (!this.dead) {
+    if (isDef(this.wasKilledBy) && this.wasKilledBy != killedBy) {
+      // De-sync because floating point isn't perfect. Or I have a bug.
+      // I'll blame floating point just because. Let's turn that frown upside
+      // down, now you're coding with SCIENCE!
+      var text = new Sprite(RENDERER.gl());
+      text.setTexture(RESOURCES['txt_desync.png']);
+      BreakSprite(text);
+      return;
+    }
     this.dead = true;
-    this.killedBy = source;
+    this.killedBy = killedBy;
     Explode(this.sprite.pos(), 20);
     this.sprite.stage.removeSprite(this.sprite);
   }
