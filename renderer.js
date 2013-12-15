@@ -85,6 +85,7 @@ Batch.prototype.removeSprite = function(sprite) {
   if (index == -1) throw 'Sprite not a child!';
   this.sprites_[index] = this.sprites_[this.sprites_.length - 1];
   this.sprites_.pop();
+  sprite.stage = null;
 };
 
 Batch.prototype.reset = function() {
@@ -156,8 +157,9 @@ Batch.prototype.fillBuffers = function(mtx) {
       if (sprite.axis_) {
         mtx.x(geom.Mat4.rotate(sprite.axis_, sprite.angle_));
       }
-      if (sprite.w_ != 1 || sprite.h_ != 1) {
-        mtx.x(geom.Mat4.diag(sprite.w_, sprite.h_, 1));
+      var size = sprite.size();
+      if (size.x != 1 || size.y != 1) {
+        mtx.x(geom.Mat4.diag(size.x, size.y, 1));
       }
       var b = Math.sin(Math.PI * this.stage.beat[sprite.beat || 0]) / 5;
       c0.x = -0.5 - b; c0.y =  0.5 + b; c0.z = 0;
@@ -759,6 +761,8 @@ function Sprite(gl) {
   this.gl_ = gl;
   this.w_ = 1;
   this.h_ = 1;
+  this.ws_ = 1;
+  this.hs_ = 1;
   this.pos_ = new geom.Vec3(0, 0, 0);
   this.beats = 0;
 
@@ -773,15 +777,19 @@ Sprite.defaultNormalMap_ = function(gl) {
   return Sprite.DEFAULT_NORMAL_MAP_;
 };
 
-Sprite.prototype.setSize = function(w, h) {
-  this.w_ = w;
-  this.h_ = h;
+Sprite.prototype.setScale = function(w, h) {
+  this.ws_ = w;
+  this.hs_ = h;
 };
 
 Sprite.prototype.size = function() {
-  return new geom.Vec2(this.w_, this.h_);
+  return new geom.Vec2(this.w_ * this.ws_, this.h_ * this.hs_);
 };
 
+
+Sprite.prototype.scale = function() {
+  return new geom.Vec2(this.ws_, this.hs_);
+};
 
 Sprite.prototype.pos = function() {
   return this.pos_;
@@ -807,7 +815,8 @@ Sprite.prototype.setRotation = function(axis, angle) {
 
 Sprite.prototype.setTexture = function(txt) {
   this.texture = txt;
-  this.setSize(txt.w, txt.h);
+  this.w_ = txt.w;
+  this.h_ = txt.h;
 };
 
 Sprite.prototype.setNormalMap = function(txt) {

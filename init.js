@@ -101,7 +101,7 @@ DeathState.prototype.tick = function(t) {
   for (var i = 0; i < fx.length; i++) {
     if (fx[i]) {
       if (fx[i].dead) {
-        this.stage.removeSprite(fx[i].sprite);
+        if (fx[i].sprite) this.stage.removeSprite(fx[i].sprite);
         fx[i] = null;
       } else {
         fx[i].tick(t);
@@ -118,9 +118,7 @@ DeathState.prototype.enter = function() {
   this.text = new Sprite(RENDERER.gl());
   this.text.setTexture(RESOURCES['txt_fractured.png']);
   this.text.setPos(0, 0, 50);
-  this.text.setSize(
-      this.text.size().x * 3,
-      this.text.size().y * 3);
+  this.text.setScale(3, 3);
   BreakSprite(this.text);
   this.stage.addSprite(this.text);
 };
@@ -150,6 +148,8 @@ PlayState.prototype.tick = function(t) {
   var anyDead = this.game.players.some(function(p) { return p && p.dead; });
   if (anyDead) {
     this.recordings.unshift(this.game.players[0].getRecording());
+    this.restoreText && this.restoreText.stage.removeSprite(this.restoreText);
+    this.restoreText = null;
     GameState.push(new DeathState(this));
     return;
   }
@@ -179,9 +179,26 @@ Game.prototype.spawn = function(kind, pos) {
           new HomingController(this.players),
           this.id));
   } else if (kind == 'spinner') {
-    this.addEnemy(new Spinner(
-          pos,
-          this.id));
+    var spinner = new Spinner(pos, this.id);
+    var timed = {
+      game: this,
+      spinner: spinner,
+      sprite: spinner.sprite,
+      left: 0.5,
+      tick: function(t) {
+        this.left -= t;
+        var alpha = Math.sqrt(this.left / 0.5);
+        this.sprite.colorFilter = new geom.Vec3(-alpha, -alpha, -alpha);
+        if (this.left <= 0) {
+          this.dead = true;
+          this.sprite.colorFilter = null;
+          this.sprite.stage.removeSprite(this.sprite);
+          this.sprite = null;
+          this.game.addEnemy(this.spinner);
+        }
+      }
+    };
+    this.addFx(timed);
   }
 };
 
@@ -225,7 +242,6 @@ Game.prototype.removeBulletsFrom = function(shooter) {
       var timed = {
         sp: new geom.Vec3(bullet.sprite.pos()),
         ep: new geom.Vec3(shooter.sprite.pos()),
-        scale: bullet.sprite.size(),
 
         left: 0.3,
         sprite: bullet.sprite,
@@ -236,8 +252,7 @@ Game.prototype.removeBulletsFrom = function(shooter) {
               alpha * this.sp.x + (1 - alpha) * this.ep.x,
               alpha * this.sp.y + (1 - alpha) * this.ep.y,
               alpha * this.sp.z + (1 - alpha) * this.ep.z);
-          this.sprite.setSize(
-              alpha * this.scale.x, alpha * this.scale.y);
+          this.sprite.setScale(alpha, alpha);
           if (this.left <= 0) {
             this.dead = true;
             this.sprite.stage.removeSprite(this.sprite);
@@ -291,14 +306,18 @@ Game.prototype.tick = function(t) {
   this.t += t;
   if (this.restoreNextFrame) {
     this.restoreNextFrame = false;
-    var text = new Sprite(RENDERER.gl());
-    text.setTexture(RESOURCES['txt_restored.png']);
-    text.setSize(text.size().x * 3, text.size().y * 3);
+    this.restoreText = new Sprite(RENDERER.gl());
+    this.restoreText.setTexture(RESOURCES['txt_restored.png']);
+    this.restoreText.setScale(3, 3);
     var timed = {
       left: 2,
-      sprite: text,
+      sprite: this.restoreText,
       tick: function(t) {
         this.left -= t;
+        if (!this.sprite.stage) {
+          this.dead = true;
+          return;
+        }
         this.sprite.visible = 3 != (Math.floor(this.left * 8) % 4);
         if (this.left <= 0) {
           this.dead = true;
@@ -306,7 +325,7 @@ Game.prototype.tick = function(t) {
         }
       }
     };
-    this.stage.addSprite(text);
+    this.stage.addSprite(this.restoreText);
     this.addFx(timed);
   }
   this.collidePlayersWithEnemies();
@@ -352,7 +371,7 @@ Game.prototype.tick = function(t) {
   for (var i = 0; i < this.fx.length; i++) {
     if (this.fx[i]) {
       if (this.fx[i].dead) {
-        this.stage.removeSprite(this.fx[i].sprite);
+        if (this.fx[i].sprite) this.stage.removeSprite(this.fx[i].sprite);
         this.fx[i] = null;
       } else {
         this.fx[i].tick(t);
@@ -614,8 +633,7 @@ var Bullet = function(name, opts) {
       new geom.Vec3(0, 0, 1),
       this.vel.toVec2().theta());
   if (this.scale != 1) {
-    var size = this.sprite.size();
-    this.sprite.setSize(size.x * this.scale, size.y * this.scale);
+    this.sprite.setScale(this.scale, this.scale);
   }
 };
 
@@ -645,13 +663,14 @@ var Particle = function(nameOrTextures, opts) {
   this.rotAxis = new geom.Vec3(
       this.vel.y, -this.vel.x, randFlt(-0.5, 0.5)).normalize();
   this.rotAngle = 0;
-  this.size = this.sprite.size();
+  this.scale = this.sprite.scale();
   if (isDef(opts.scale)) {
-    this.size.x *= opts.scale;
-    this.size.y *= opts.scale;
-    this.sprite.setSize(this.size.x, this.size.y);
-  } else if (isDef(opts.size)) {
-    this.sprite.setSize(opts.size.x, opts.size.y);
+    if (opts.scale.x) {
+      this.scale = opts.scale;
+    } else {
+      this.scale = new geom.Vec2(opts.scale, opts.scale);
+    }
+    this.sprite.setScale(this.scale.x, this.scale.y);
   }
   this.life = this.duration = opts.duration || 2;
   this.shrink = isDef(opts.shrink) ? opts.shrink : true;
@@ -669,7 +688,7 @@ Particle.prototype.tick = function(t) {
 
   var alpha = this.life / this.duration;
   if (this.shrink) {
-    this.sprite.setSize(this.size.x * alpha, this.size.y * alpha);
+    this.sprite.setScale(this.scale.x * alpha, this.scale.y * alpha);
   }
 };
 
@@ -677,28 +696,25 @@ var BreakSprite = function(sprite) {
   if (sprite.axis) throw 'Cannae break rotated sprites';
   var center = sprite.pos();
   var dims = sprite.size();
-  var dsw = dims.x / sprite.texture.w;
-  var dsh = dims.y / sprite.texture.h;
-  var nsw = dims.x / sprite.normalMap.w;
-  var nsh = dims.y / sprite.normalMap.h;
-  var hw = dims.x / 2;
-  var hh = dims.y / 2;
-  for (var y = -hh; y < hh; y += 16) {
-    for (var x = -hw; x < hw; x += 16) {
+  var scale = sprite.scale();
+  var hw = dims.x / 2 / scale.x;
+  var hh = dims.y / 2 / scale.y;
+  for (var y = -hh; y < hh; y += 8) {
+    for (var x = -hw; x < hw; x += 8) {
       var textures = {
         diffuse: Texture.sub(
-            sprite.texture, new geom.Vec2((hw + x) / dsw, (hh + y) / dsh),
-            new geom.Vec2(16 / dsw, 16 / dsh)),
+            sprite.texture, new geom.Vec2(hw + x, hh + y),
+            new geom.Vec2(8, 8)),
         normal: Texture.sub(
-            sprite.normalMap, new geom.Vec2((hw + x) / nsw, (hh + y) / nsh),
-            new geom.Vec2(16 / nsw, 16 / nsh)),
+            sprite.normalMap, new geom.Vec2(hw + x, hh + y),
+            new geom.Vec2(8, 8)),
       };
 
       GAME.addFx(new Particle(textures, {
         life: randFlt(1.5, 2),
-        pos: new geom.Vec3(center.x + x, center.y - y, center.z),
+        pos: new geom.Vec3(center.x + x * scale.x, center.y - y * scale.y, center.z),
         vel: new geom.Vec3(x, -y, 0).normalize().times(randFlt(15, 27)),
-        size: new geom.Vec2(16, 16),
+        scale: sprite.scale(),
         shrink: false,
       }));
     }
